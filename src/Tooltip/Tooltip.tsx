@@ -1,8 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-
 import { TooltipPosition } from "../types";
-import { classNames } from "../Utils/utils";
-import { mapToCssModules } from "../Utils/utils";
+import { classNames, mapToCssModules } from "../Utils/utils";
 import React from "react";
 import { useSmartConfig } from "../hook/useSmartConfig";
 
@@ -15,9 +13,11 @@ interface TooltipPropTypes {
 
 export function Tooltip(props: TooltipPropTypes) {
   const { className, children, text, position = TooltipPosition.Top } = props;
-  const [showTooltip, setShowTooltip] = useState(false);
-  const tooltipElementRef = useRef(null);
   const config = useSmartConfig();
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  const tooltipElementRef = useRef<HTMLElement | null>(null);
+
   const handleTooltipMouseEnter = () => {
     setShowTooltip(true);
   };
@@ -27,8 +27,8 @@ export function Tooltip(props: TooltipPropTypes) {
   };
 
   const tooltipRef = useCallback(
-    (node) => {
-      if (node !== null) {
+    (node: HTMLDivElement | null) => {
+      if (node !== null && tooltipElementRef.current) {
         const overlayRect = tooltipElementRef.current.getBoundingClientRect();
         const tooltipWidth =
           node.getBoundingClientRect().width < config.components.tooltip.width
@@ -67,8 +67,9 @@ export function Tooltip(props: TooltipPropTypes) {
         node.style.visibility = "visible";
       }
     },
-    [position]
+    [position, config.components.tooltip.width]
   );
+
   let tooltipClass =
     position === TooltipPosition.Top
       ? config.components.tooltip.classes.top
@@ -77,7 +78,9 @@ export function Tooltip(props: TooltipPropTypes) {
       : position === TooltipPosition.Left
       ? config.components.tooltip.classes.left
       : config.components.tooltip.classes.right;
+
   tooltipClass = mapToCssModules(classNames(className, tooltipClass));
+
   const toolTipDiv = showTooltip ? (
     <div
       ref={tooltipRef}
@@ -87,11 +90,32 @@ export function Tooltip(props: TooltipPropTypes) {
       {text}
     </div>
   ) : null;
+
   const childrenWithEvents = React.isValidElement(children)
     ? React.cloneElement(children as React.ReactElement<any>, {
         onMouseEnter: handleTooltipMouseEnter,
         onMouseLeave: handleTooltipMouseLeave,
-        ref: tooltipElementRef,
+        ref: (node: HTMLElement | null) => {
+          const updateRef = (node: HTMLElement | null) => {
+            (
+              tooltipElementRef as React.MutableRefObject<HTMLElement | null>
+            ).current = node;
+          };
+          updateRef(node);
+
+          if (children) {
+            const childRef = (children as any).ref;
+            if (typeof childRef === "function") {
+              childRef(node);
+            } else if (
+              childRef &&
+              typeof childRef === "object" &&
+              "current" in childRef
+            ) {
+              childRef.current = node;
+            }
+          }
+        },
       })
     : children;
 
