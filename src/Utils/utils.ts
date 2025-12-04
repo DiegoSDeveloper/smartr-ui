@@ -375,11 +375,13 @@ export function getEditorAttributes(
     requiredMessage,
     accept,
     multiple = false,
+    skipSubmit = false,
     optionsId = config.behavior.select.optionsId,
     optionsDescription = config.behavior.select.optionsDescription,
     optionsFirstSelected = config.behavior.select.optionsFirstSelected,
     optionsNoneSelectedValue = config.behavior.select.optionsNoneSelectedValue,
-    optionsNoneSelectedText = config.components.select.texts.optionsNoneSelectedText,
+    optionsNoneSelectedText = config.components.select.texts
+      .optionsNoneSelectedText,
     options,
     thousandsSeparator = config.behavior.input.thousandsSeparator,
     decimalSeparator = config.behavior.input.decimalSeparator,
@@ -585,6 +587,9 @@ export function getEditorAttributes(
     if (placeholder) {
       editorAttributes["placeholder"] = placeholder;
     }
+  }
+  if (skipSubmit) {
+    editorAttributes["data-skip-submit"] = "true";
   }
 
   // if (String(editorValue)) {
