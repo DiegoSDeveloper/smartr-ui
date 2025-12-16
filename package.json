@@ -1,6 +1,6 @@
 {
   "name": "smartr-ui",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "A comprehensive React components library with form controls, UI elements, and layout components",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",

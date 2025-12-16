@@ -274,7 +274,10 @@ export const Table = forwardRef<TableRef, TableProps>(
     const displayTotalPages = isManaged
       ? internalTotalPages
       : totalPages || Math.ceil((totalRecords || 0) / pageSize);
-
+    const allSelected =
+      displayData.length > 0 && selectedRows.length === displayData.length;
+    const someSelected =
+      selectedRows.length > 0 && selectedRows.length < displayData.length;
     // Fetch data when enableDataManagement is true
     useEffect(() => {
       if (isManaged && autoLoad) {
@@ -288,6 +291,16 @@ export const Table = forwardRef<TableRef, TableProps>(
         setGroupedData(displayData);
         return;
       }
+
+      useEffect(() => {
+        if (
+          selection === SelectionType.CHECKBOX ||
+          selection === SelectionType.MULTIPLE
+        ) {
+          setSelectedRows([]);
+          onCheckedAllChange?.(false);
+        }
+      }, [displayData, selection]);
 
       const groupFields = Array.isArray(groupBy) ? groupBy : [groupBy];
       const processedData = processDataForGrouping(
@@ -332,7 +345,19 @@ export const Table = forwardRef<TableRef, TableProps>(
       }
     };
 
+    const clearSelection = () => {
+      flushSync(() => setSelectedRows([]));
+      onCheckedAllChange?.(false);
+    };
+
     const handlePageChange = (page: number) => {
+      if (
+        selection === SelectionType.CHECKBOX ||
+        selection === SelectionType.MULTIPLE
+      ) {
+        clearSelection();
+      }
+
       if (isManaged) {
         setInternalCurrentPage(page);
       } else {
@@ -894,6 +919,10 @@ export const Table = forwardRef<TableRef, TableProps>(
                   {enableSelectAll && (
                     <input
                       type="checkbox"
+                      checked={allSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someSelected;
+                      }}
                       onChange={handleSelectAll}
                       aria-label={texts.selectAllAriaLabel}
                     />
