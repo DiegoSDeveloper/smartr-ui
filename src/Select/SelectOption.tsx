@@ -1,5 +1,5 @@
 import React from "react";
-import { classNames } from "../Utils/utils";
+import { cx, dataAttrs } from "../Utils/styling";
 import { useSmartConfig } from "../hook/useSmartConfig";
 
 interface SelectOptionPropTypes {
@@ -44,9 +44,13 @@ export const SelectOption = (props: SelectOptionPropTypes) => {
     id,
     role: "option",
     "aria-selected": isSelected,
-    className: classNames(config.components.select.classes.option, {
+    className: cx(config, config.components.select.classes.option, {
       [config.components.select.classes.optionDisabled]: isDisabled,
       [config.components.select.classes.optionActive]: isActive,
+    }),
+    ...dataAttrs(config, {
+      disabled: isDisabled,
+      state: isSelected ? "checked" : isActive ? "active" : undefined,
     }),
     onClick: isDisabled
       ? undefined

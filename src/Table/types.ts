@@ -1,4 +1,16 @@
 import { ScreenSize } from "../types";
+import type { IconValue } from "../config/defaultConfig";
+
+/** Per-instance class overrides of the Table (merged after the configured classes). */
+export interface TableClassNames {
+  container?: string;
+  wrapper?: string;
+  table?: string;
+  thead?: string;
+  empty?: string;
+  cardList?: string;
+  card?: string;
+}
 
 export type TableColumnProps = {
   header?: string;
@@ -95,10 +107,10 @@ export interface TablePaginationComponentProps {
 
   // Icon customizations
   customIcons?: {
-    firstPage?: string;
-    previousPage?: string;
-    nextPage?: string;
-    lastPage?: string;
+    firstPage?: IconValue;
+    previousPage?: IconValue;
+    nextPage?: IconValue;
+    lastPage?: IconValue;
   };
 }
 
@@ -210,6 +222,8 @@ export interface TableProps extends TableDataManagementProps {
   classNameDetail?: any;
   rowClassName?: string | ((record: any) => string);
   rowDetailClassName?: string | ((detail: any, parent: any) => string);
+  /** Per-instance class overrides (merged after `components.table.classes`). */
+  classNames?: TableClassNames;
 
   // Localization and formatting
   timeZone?: string;
@@ -219,9 +233,9 @@ export interface TableProps extends TableDataManagementProps {
   noRecordMessage?: string;
 
   // Sorting icons
-  sortAscendingIcon?: string;
-  sortDescendingIcon?: string;
-  sortDefaultIcon?: string;
+  sortAscendingIcon?: IconValue;
+  sortDescendingIcon?: IconValue;
+  sortDefaultIcon?: IconValue;
 
   // Grouping
   grouping?: TableGroupProps;
@@ -254,6 +268,9 @@ export interface TableProps extends TableDataManagementProps {
 
 export enum SelectionType {
   NONE = 1,
+  // NONE and SINGLE have shared the value 1 since 1.0: renumbering would change
+  // the values apps store and compare, so the duplicate is kept on purpose.
+  // eslint-disable-next-line @typescript-eslint/no-duplicate-enum-values
   SINGLE = 1,
   MULTIPLE = 2,
   CHECKBOX = 3,

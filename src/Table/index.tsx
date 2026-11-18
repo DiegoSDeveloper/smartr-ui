@@ -18,7 +18,15 @@ import {
 } from "./types";
 import { flushSync } from "react-dom";
 import { Util } from "./util";
-import { classNames } from "../Utils/utils";
+import {
+  cx as cxWith,
+  instanceClassesLast,
+  dataAttrs,
+  renderIcon,
+  translateText,
+  translateTemplate,
+  withSlot,
+} from "../Utils/styling";
 import { useSmartConfig } from "../hook/useSmartConfig";
 import { TablePagination } from "./TablePagination";
 import { Loading } from "../Loading";
@@ -132,7 +140,7 @@ const processDataForGrouping = (
   return result;
 };
 
-export const Table = forwardRef<TableRef, TableProps>(
+export const Table = /*#__PURE__*/ forwardRef<TableRef, TableProps>(
   (
     {
       columns,
@@ -165,6 +173,7 @@ export const Table = forwardRef<TableRef, TableProps>(
       stickyHeader = false,
       rowClassName,
       rowDetailClassName,
+      classNames: slots = {},
       data = [],
       className,
       classNameDetail,
@@ -229,14 +238,49 @@ export const Table = forwardRef<TableRef, TableProps>(
     } = groupingConfig;
 
     const tableTexts = config.components.table.texts ?? ({} as any);
+    const text = (key: string) =>
+      translateText(config, `table.texts.${key}`, tableTexts[key]);
     const texts = {
-      selectAllAriaLabel: tableTexts.selectAllAriaLabel,
-      selectRowAriaLabel: tableTexts.selectRowAriaLabel,
-      groupCountSingular: tableTexts.groupCountSingular,
-      groupCountPlural: tableTexts.groupCountPlural,
-      groupHeaderCountFormat: tableTexts.groupHeaderCountFormat,
-      groupFooterText: tableTexts.groupFooterText,
-      exportNoRowsWarning: tableTexts.exportNoRowsWarning,
+      selectAllAriaLabel: text("selectAllAriaLabel"),
+      selectRowAriaLabel: text("selectRowAriaLabel"),
+      groupCountSingular: text("groupCountSingular"),
+      groupCountPlural: text("groupCountPlural"),
+      exportNoRowsWarning: text("exportNoRowsWarning"),
+    };
+    /**
+     * Group texts with placeholders: `{count}` / `{label}` / `{plural}`,
+     * positional `{0}`, `{1}`… or `%s1`, `%s2`… (params: count, label, plural).
+     * `translate` receives the params.
+     */
+    const groupText = (key: string, count: number) => {
+      const label = count === 1 ? texts.groupCountSingular : texts.groupCountPlural;
+      const plural = count !== 1 ? "s" : "";
+      return translateTemplate(
+        config,
+        `table.texts.${key}`,
+        tableTexts[key] ?? "",
+        [count, label, plural],
+        { count, label, plural }
+      );
+    };
+    // Configured classes (Bootstrap defaults reproduce the 1.1.0 markup)
+    const tc = config.components.table.classes;
+    const tableIcons = config.components.table.icons;
+    const classNames = (...args: any[]) => cxWith(config, ...args);
+    const alignClass = (
+      type?: AlignType,
+      defaultValue: AlignType = AlignType.START
+    ): string | null => {
+      switch (type ?? defaultValue) {
+        case AlignType.START:
+          return tc.alignStart;
+        case AlignType.CENTER:
+          return tc.alignCenter;
+        case AlignType.END:
+          return tc.alignEnd;
+        default:
+          return null;
+      }
     };
 
     const screenSize = Util.getScreenSize();
@@ -252,22 +296,16 @@ export const Table = forwardRef<TableRef, TableProps>(
 
     const finalTimeZone = timeZone ?? config.components.table.behavior.timeZone;
     const finalCulture = culture ?? config.components.table.behavior.culture;
-    const finalNoRecordMessage =
-      noRecordMessage ?? config.components.table.texts.noRecordMessage;
-    const finalLoadingText =
-      loadingText ?? config.components.table.texts.loadingText;
+    const finalNoRecordMessage = noRecordMessage ?? text("noRecordMessage");
+    const finalLoadingText = loadingText ?? text("loadingText");
+    // `false` in config means "no icon" (unstyled preset); null/undefined keep
+    // the 1.1.0 Font Awesome fallbacks.
     const finalSortAscendingIcon =
-      sortAscendingIcon ??
-      config.components.table.icons.sortAscending ??
-      "fas fa-sort-up";
+      sortAscendingIcon ?? tableIcons.sortAscending ?? "fas fa-sort-up";
     const finalSortDescendingIcon =
-      sortDescendingIcon ??
-      config.components.table.icons.sortDescending ??
-      "fas fa-sort-down";
+      sortDescendingIcon ?? tableIcons.sortDescending ?? "fas fa-sort-down";
     const finalSortDefaultIcon =
-      sortDefaultIcon ??
-      config.components.table.icons.sortDefault ??
-      "fas fa-sort";
+      sortDefaultIcon ?? tableIcons.sortDefault ?? "fas fa-sort";
 
     // Determine data source and states
     const isManaged = enableDataManagement && onFetchData;
@@ -594,31 +632,25 @@ export const Table = forwardRef<TableRef, TableProps>(
     const generateSortingIndicator = (column: TableColumnProps) => {
       // ✅ Only show indicator if column is sortable
       if (column.enableSort !== true) {
-        return finalSortDefaultIcon ? (
-          <i
-            className={finalSortDefaultIcon}
-            style={{ opacity: 0, visibility: "hidden", marginLeft: "5px" }}
-          />
-        ) : null;
+        return finalSortDefaultIcon
+          ? renderIcon(finalSortDefaultIcon, {
+              style: { opacity: 0, visibility: "hidden", marginLeft: "5px" },
+            })
+          : null;
       }
 
       if (sortedColumn && sortedColumn.accessor === column.accessor) {
-        return (
-          <i
-            className={
-              isSortedDesc ? finalSortDescendingIcon : finalSortAscendingIcon
-            }
-            style={{ marginLeft: "5px" }}
-          />
+        return renderIcon(
+          isSortedDesc ? finalSortDescendingIcon : finalSortAscendingIcon,
+          { style: { marginLeft: "5px" } }
         );
       }
 
-      return finalSortDefaultIcon ? (
-        <i
-          className={finalSortDefaultIcon}
-          style={{ opacity: 0.3, marginLeft: "5px" }}
-        />
-      ) : null;
+      return finalSortDefaultIcon
+        ? renderIcon(finalSortDefaultIcon, {
+            style: { opacity: 0.3, marginLeft: "5px" },
+          })
+        : null;
     };
 
     const handleSort = (column: TableColumnProps) => {
@@ -635,10 +667,10 @@ export const Table = forwardRef<TableRef, TableProps>(
     const sortedData = [...displayData].sort((a, b) => {
       if (!sortedColumn) return 0;
 
-      const valueA = a.hasOwnProperty(sortedColumn.accessor)
+      const valueA = Object.prototype.hasOwnProperty.call(a, sortedColumn.accessor)
         ? a[sortedColumn.accessor]
         : Util.getDefaultValue(sortedColumn.type);
-      const valueB = b.hasOwnProperty(sortedColumn.accessor)
+      const valueB = Object.prototype.hasOwnProperty.call(b, sortedColumn.accessor)
         ? b[sortedColumn.accessor]
         : Util.getDefaultValue(sortedColumn.type);
 
@@ -843,7 +875,7 @@ export const Table = forwardRef<TableRef, TableProps>(
         return "";
       }
 
-      let value = Util.getColumnValue(column, record);
+      const value = Util.getColumnValue(column, record);
 
       if (value !== undefined && value !== null) {
         if (column.format) {
@@ -958,12 +990,22 @@ export const Table = forwardRef<TableRef, TableProps>(
     };
 
     const classes = Util.mapToCssModules(
-      classNames(
-        className,
-        "table table-bordered",
-        enableHoverEffect ? "table-hover" : "",
-      ),
+      instanceClassesLast(config)
+        ? classNames(
+            tc.table,
+            enableHoverEffect ? tc.tableHover : "",
+            className,
+            slots.table,
+          )
+        : classNames(
+            className,
+            tc.table,
+            enableHoverEffect ? tc.tableHover : "",
+            slots.table,
+          ),
     );
+    const wrapperClass = withSlot(config, tc.responsiveWrapper, slots.wrapper);
+    const theadClass = withSlot(config, tc.thead, slots.thead);
 
     const scrollContainerStyle: CSSProperties | undefined = scrollable
       ? {
@@ -984,23 +1026,26 @@ export const Table = forwardRef<TableRef, TableProps>(
       : undefined;
 
     const classesDetail = Util.mapToCssModules(
-      classNames(
-        classNameDetail,
-        "table table-bordered",
-        enableHoverEffectDetail ? "table-hover" : "",
-      ),
+      instanceClassesLast(config)
+        ? classNames(
+            tc.table,
+            enableHoverEffectDetail ? tc.tableHover : "",
+            classNameDetail,
+          )
+        : classNames(
+            classNameDetail,
+            tc.table,
+            enableHoverEffectDetail ? tc.tableHover : "",
+          ),
     );
 
     const renderHeader = () => {
       return (
         <>
-          <thead className="table-light table-nowrap" style={stickyHeaderStyle}>
+          <thead className={theadClass} style={stickyHeaderStyle}>
             <tr role="row">
               {selection === SelectionType.CHECKBOX && (
-                <th
-                  role="columnheader"
-                  className={`header-checkbox text-center`}
-                >
+                <th role="columnheader" className={tc.headerCheckbox}>
                   {enableSelectAll && (
                     <input
                       type="checkbox"
@@ -1020,9 +1065,9 @@ export const Table = forwardRef<TableRef, TableProps>(
                   role="columnheader"
                   className={classNames(
                     column.headerClassName,
-                    Util.getAlignClassName(column.headerAlign),
+                    alignClass(column.headerAlign),
                     {
-                      "header-filter": !column.disableFilters,
+                      [tc.headerFilter]: !column.disableFilters,
                     },
                   )}
                   style={{
@@ -1047,7 +1092,7 @@ export const Table = forwardRef<TableRef, TableProps>(
     const renderTableHeader = () => {
       return (
         <>
-          <div className="table-responsive react-table">
+          <div className={wrapperClass}>
             <table role="table" className={classes}>
               {renderHeader()}
             </table>
@@ -1101,14 +1146,23 @@ export const Table = forwardRef<TableRef, TableProps>(
       const defaultContent = (
         <div
           className={classNames(
-            "group-header",
-            `group-level-${record.__groupLevel}`,
+            tc.groupHeader,
+            tc.groupLevelPrefix
+              ? `${tc.groupLevelPrefix}${record.__groupLevel}`
+              : null,
             {
-              "cursor-pointer": collapsibleGroups,
-              "group-expanded": isExpanded,
-              "group-collapsed": !isExpanded,
+              [tc.groupClickable]: collapsibleGroups,
+            },
+            {
+              [tc.groupExpanded]: isExpanded,
+            },
+            {
+              [tc.groupCollapsed]: !isExpanded,
             },
           )}
+          {...dataAttrs(config, {
+            state: isExpanded ? "open" : "closed",
+          })}
           style={{
             paddingLeft: `${record.__groupLevel * 20}px`,
             backgroundColor: `hsl(${210 - record.__groupLevel * 10}, 80%, 95%)`,
@@ -1117,40 +1171,29 @@ export const Table = forwardRef<TableRef, TableProps>(
             collapsibleGroups && handleGroupToggle(record.__groupKey)
           }
         >
-          <div className="d-flex align-items-center">
-            {collapsibleGroups && (
-              <i
-                className={classNames(
-                  "fas me-2 transition-all",
-                  isExpanded ? "fa-chevron-down" : "fa-chevron-right",
-                )}
-                style={{ fontSize: "0.8rem" }}
-              />
-            )}
+          <div className={tc.groupHeaderContent}>
+            {collapsibleGroups &&
+              renderIcon(
+                isExpanded ? tableIcons.groupExpanded : tableIcons.groupCollapsed,
+                { style: { fontSize: "0.8rem" } },
+              )}
             <strong>
               {groupLabel}
               {showGroupCount &&
-                texts.groupHeaderCountFormat
-                  .replace("{count}", String(recordCount))
-                  .replace(
-                    "{label}",
-                    recordCount === 1
-                      ? texts.groupCountSingular
-                      : texts.groupCountPlural,
-                  )}
+                groupText("groupHeaderCountFormat", recordCount)}
             </strong>
           </div>
         </div>
       );
 
       return (
-        <tr key={`group-header-${rowIndex}`} className="group-header-row">
+        <tr key={`group-header-${rowIndex}`} className={tc.groupHeaderRow}>
           <td
             colSpan={
               visibleColumns.length +
               (selection === SelectionType.CHECKBOX ? 1 : 0)
             }
-            className="group-header-cell p-0"
+            className={tc.groupHeaderCell}
           >
             {groupHeaderRender
               ? groupHeaderRender(
@@ -1168,29 +1211,26 @@ export const Table = forwardRef<TableRef, TableProps>(
     const renderGroupFooter = (record: any, rowIndex: number) => {
       const defaultContent = (
         <div
-          className="group-footer"
+          className={tc.groupFooter}
           style={{
             paddingLeft: `${record.__groupLevel * 20}px`,
             backgroundColor: `hsl(${210 - record.__groupLevel * 10}, 60%, 97%)`,
           }}
         >
           <em>
-            {texts.groupFooterText.replace(
-              "{count}",
-              String(record.__groupRecords.length),
-            )}
+            {groupText("groupFooterText", record.__groupRecords.length)}
           </em>
         </div>
       );
 
       return (
-        <tr key={`group-footer-${rowIndex}`} className="group-footer-row">
+        <tr key={`group-footer-${rowIndex}`} className={tc.groupFooterRow}>
           <td
             colSpan={
               visibleColumns.length +
               (selection === SelectionType.CHECKBOX ? 1 : 0)
             }
-            className="group-footer-cell p-0"
+            className={tc.groupFooterCell}
           >
             {groupFooterRender
               ? groupFooterRender(
@@ -1248,8 +1288,8 @@ export const Table = forwardRef<TableRef, TableProps>(
       };
 
       const resolveRowClassName = (record: any) => {
-        if (record.__isGroupHeader) return "group-header-row";
-        if (record.__isGroupFooter) return "group-footer-row";
+        if (record.__isGroupHeader) return tc.groupHeaderRow;
+        if (record.__isGroupFooter) return tc.groupFooterRow;
 
         if (!rowClassName) return "";
         return typeof rowClassName === "function"
@@ -1268,7 +1308,7 @@ export const Table = forwardRef<TableRef, TableProps>(
         <>
           {data.length > 0 ? (
             <div
-              className="table-responsive react-table"
+              className={wrapperClass}
               style={scrollContainerStyle}
             >
               <table role="table" className={classes}>
@@ -1299,7 +1339,7 @@ export const Table = forwardRef<TableRef, TableProps>(
                             {selection === SelectionType.CHECKBOX && (
                               <td
                                 role="cell"
-                                className="cell-checkbox text-center"
+                                className={tc.cellCheckbox}
                               >
                                 <input
                                   type="checkbox"
@@ -1326,7 +1366,7 @@ export const Table = forwardRef<TableRef, TableProps>(
                                 role="cell"
                                 className={classNames(
                                   column.contentClassName,
-                                  Util.getAlignClassName(column.contentAlign),
+                                  alignClass(column.contentAlign),
                                 )}
                                 style={{
                                   ...((!showHeader ||
@@ -1354,11 +1394,11 @@ export const Table = forwardRef<TableRef, TableProps>(
                           {typeof rowFooterRender === "function" && (
                             <tr
                               key={`tr-footer-${rowIndex}`}
-                              className="tr-row-footer"
+                              className={tc.rowFooter}
                             >
                               <td
                                 role="cell"
-                                className="td-row-footer"
+                                className={tc.rowFooterCell}
                                 colSpan={
                                   (selection === SelectionType.CHECKBOX
                                     ? 1
@@ -1374,7 +1414,7 @@ export const Table = forwardRef<TableRef, TableProps>(
                             <tr
                               key={`tr-detail-${rowIndex}`}
                               role="row"
-                              className="tr-detail"
+                              className={tc.detailRow}
                             >
                               <td
                                 colSpan={
@@ -1384,7 +1424,7 @@ export const Table = forwardRef<TableRef, TableProps>(
                               >
                                 <table role="table" className={classesDetail}>
                                   {showDetailHeader && (
-                                    <thead className="table-light table-nowrap">
+                                    <thead className={tc.thead}>
                                       <tr
                                         key={`tr-detail-${rowIndex}`}
                                         role="row"
@@ -1396,11 +1436,11 @@ export const Table = forwardRef<TableRef, TableProps>(
                                               role="columnheader"
                                               className={classNames(
                                                 columnDetail.headerClassName,
-                                                Util.getAlignClassName(
+                                                alignClass(
                                                   columnDetail.headerAlign,
                                                 ),
                                                 {
-                                                  "header-filter":
+                                                  [tc.headerFilter]:
                                                     !columnDetail.disableFilters,
                                                 },
                                               )}
@@ -1458,7 +1498,7 @@ export const Table = forwardRef<TableRef, TableProps>(
                                                   role="cell"
                                                   className={classNames(
                                                     columnDetail.contentClassName,
-                                                    Util.getAlignClassName(
+                                                    alignClass(
                                                       columnDetail.contentAlign,
                                                     ),
                                                   )}
@@ -1489,10 +1529,10 @@ export const Table = forwardRef<TableRef, TableProps>(
                                           {/* ➜ detail row footer */}
                                           {typeof rowDetailFooterRender ===
                                             "function" && (
-                                            <tr className="tr-row-detail-footer">
+                                            <tr className={tc.detailRowFooter}>
                                               <td
                                                 role="cell"
-                                                className="td-row-detail-footer"
+                                                className={tc.detailRowFooterCell}
                                                 colSpan={columnsDetail.length}
                                               >
                                                 {rowDetailFooterRender(
@@ -1520,7 +1560,7 @@ export const Table = forwardRef<TableRef, TableProps>(
               </table>
             </div>
           ) : (
-            <div className={`alert alert-info text-center`} role="alert">
+            <div className={withSlot(config, tc.emptyMessage, slots.empty)} role="alert">
               {finalNoRecordMessage}
             </div>
           )}
@@ -1548,8 +1588,8 @@ export const Table = forwardRef<TableRef, TableProps>(
       });
 
       const resolveRowClassName = (record: any) => {
-        if (record.__isGroupHeader) return "group-header-card";
-        if (record.__isGroupFooter) return "group-footer-card";
+        if (record.__isGroupHeader) return tc.groupHeaderCard;
+        if (record.__isGroupFooter) return tc.groupFooterCard;
 
         if (!rowClassName) return "";
         return typeof rowClassName === "function"
@@ -1567,20 +1607,21 @@ export const Table = forwardRef<TableRef, TableProps>(
       // ➜ No records: show alert
       if (!data || data.length === 0) {
         return (
-          <div className={`alert alert-info text-center my-3`} role="alert">
+          <div className={withSlot(config, tc.emptyMessageCard, slots.empty)} role="alert">
             {finalNoRecordMessage}
           </div>
         );
       }
 
       return (
-        <div className="card-list">
+        <div className={withSlot(config, tc.cardList, slots.cardList)}>
           {data.map((record, rowIndex) => (
             <div
               key={rowIndex}
               className={classNames(
-                "card mb-3 p-3 shadow-sm",
+                tc.card,
                 resolveRowClassName(record),
+                slots.card,
               )}
               onDoubleClick={(e) => {
                 if (!record.__isGroupHeader && !record.__isGroupFooter) {
@@ -1591,8 +1632,11 @@ export const Table = forwardRef<TableRef, TableProps>(
               {/* Group Header in Card View */}
               {record.__isGroupHeader && (
                 <div
-                  className={classNames("group-header-card", {
-                    "cursor-pointer": collapsibleGroups,
+                  className={classNames(tc.groupHeaderCard, {
+                    [tc.groupClickable]: collapsibleGroups,
+                  })}
+                  {...dataAttrs(config, {
+                    state: record.__isExpanded ? "open" : "closed",
                   })}
                   style={{
                     paddingLeft: `${record.__groupLevel * 15}px`,
@@ -1607,24 +1651,21 @@ export const Table = forwardRef<TableRef, TableProps>(
                     collapsibleGroups && handleGroupToggle(record.__groupKey)
                   }
                 >
-                  <div className="d-flex align-items-center">
-                    {collapsibleGroups && (
-                      <i
-                        className={classNames(
-                          "fas me-2 transition-all",
-                          record.__isExpanded
-                            ? "fa-chevron-down"
-                            : "fa-chevron-right",
-                        )}
-                        style={{ fontSize: "0.8rem" }}
-                      />
-                    )}
+                  <div className={tc.groupHeaderContent}>
+                    {collapsibleGroups &&
+                      renderIcon(
+                        record.__isExpanded
+                          ? tableIcons.groupExpanded
+                          : tableIcons.groupCollapsed,
+                        { style: { fontSize: "0.8rem" } },
+                      )}
                     <strong>
                       {record.__groupValues.join(groupSeparator)}
                       {showGroupCount &&
-                        ` (${record.__groupRecords.length} registro${
-                          record.__groupRecords.length !== 1 ? "s" : ""
-                        })`}
+                        groupText(
+                          "cardGroupCountFormat",
+                          record.__groupRecords.length,
+                        )}
                     </strong>
                   </div>
                 </div>
@@ -1633,7 +1674,7 @@ export const Table = forwardRef<TableRef, TableProps>(
               {/* Group Footer in Card View */}
               {record.__isGroupFooter && (
                 <div
-                  className="group-footer-card"
+                  className={tc.groupFooterCard}
                   style={{
                     paddingLeft: `${record.__groupLevel * 15}px`,
                     backgroundColor: `hsl(${
@@ -1645,7 +1686,10 @@ export const Table = forwardRef<TableRef, TableProps>(
                   }}
                 >
                   <em>
-                    Total do grupo: {record.__groupRecords.length} registros
+                    {groupText(
+                      "cardGroupFooterText",
+                      record.__groupRecords.length,
+                    )}
                   </em>
                 </div>
               )}
@@ -1674,15 +1718,15 @@ export const Table = forwardRef<TableRef, TableProps>(
                     return (
                       <div
                         key={colIndex}
-                        className="row gx-2 border-bottom py-2"
+                        className={tc.cardField}
                       >
                         {/* Label */}
                         {showHeader && (
                           <div
                             className={classNames(
-                              "col-4",
+                              tc.cardLabel,
                               column.headerClassName,
-                              Util.getAlignClassName(column.headerAlignCard),
+                              alignClass(column.headerAlignCard),
                             )}
                           >
                             <strong>{column.header}</strong>
@@ -1692,9 +1736,9 @@ export const Table = forwardRef<TableRef, TableProps>(
                         {/* Value */}
                         <div
                           className={classNames(
-                            showHeader ? "col-8" : "col-12",
+                            showHeader ? tc.cardValue : tc.cardValueFull,
                             column.contentClassName,
-                            Util.getAlignClassName(
+                            alignClass(
                               column.contentAlignCard,
                               AlignType.END,
                             ),
@@ -1708,7 +1752,7 @@ export const Table = forwardRef<TableRef, TableProps>(
 
                   {/* ➜ card footer (main row) */}
                   {typeof rowFooterRender === "function" && (
-                    <div className="card-row-footer pt-2">
+                    <div className={tc.cardRowFooter}>
                       {rowFooterRender(record, rowIndex)}
                     </div>
                   )}
@@ -1719,13 +1763,13 @@ export const Table = forwardRef<TableRef, TableProps>(
                     dataDetailProperty &&
                     Array.isArray(record[dataDetailProperty]) &&
                     record[dataDetailProperty].length > 0 && (
-                      <div className="mt-3">
+                      <div className={tc.cardDetails}>
                         {record[dataDetailProperty].map(
                           (recordDetail: any, rowDetailIndex: number) => (
                             <div
                               key={rowDetailIndex}
                               className={classNames(
-                                "card mb-2 p-2 bg-light-subtle",
+                                tc.detailCard,
                                 resolveDetailRowClassName(recordDetail, record),
                               )}
                               onDoubleClick={() =>
@@ -1765,14 +1809,14 @@ export const Table = forwardRef<TableRef, TableProps>(
                                   return (
                                     <div
                                       key={colDetailIndex}
-                                      className="row gx-2 border-bottom py-2"
+                                      className={tc.cardField}
                                     >
                                       {showHeaderDetail && (
                                         <div
                                           className={classNames(
-                                            "col-4",
+                                            tc.cardLabel,
                                             columnDetail.headerClassName,
-                                            Util.getAlignClassName(
+                                            alignClass(
                                               columnDetail.headerAlignCard ??
                                                 columnDetail.headerAlign,
                                             ),
@@ -1784,9 +1828,9 @@ export const Table = forwardRef<TableRef, TableProps>(
 
                                       <div
                                         className={classNames(
-                                          showHeaderDetail ? "col-8" : "col-12",
+                                          showHeaderDetail ? tc.cardValue : tc.cardValueFull,
                                           columnDetail.contentClassName,
-                                          Util.getAlignClassName(
+                                          alignClass(
                                             columnDetail.contentAlignCard ??
                                               columnDetail.contentAlign,
                                             AlignType.END,
@@ -1802,7 +1846,7 @@ export const Table = forwardRef<TableRef, TableProps>(
 
                               {/* ➜ detail card footer */}
                               {typeof rowDetailFooterRender === "function" && (
-                                <div className="card-row-detail-footer pt-2">
+                                <div className={tc.cardRowDetailFooter}>
                                   {rowDetailFooterRender(
                                     recordDetail,
                                     record,
@@ -1833,7 +1877,7 @@ export const Table = forwardRef<TableRef, TableProps>(
     }
 
     return (
-      <div className="smart-table-container">
+      <div className={withSlot(config, tc.container, slots.container)}>
         {/* Top pagination */}
         {(paginationPosition === "top" || paginationPosition === "both") &&
           renderPagination()}

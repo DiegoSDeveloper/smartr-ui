@@ -8,7 +8,6 @@ import {
   Input,
   ScreenSize,
   TextInput,
-  TooltipPosition,
   ValidationMessage,
   ValueType,
 } from "../types";
@@ -16,6 +15,141 @@ import { EditorPropType } from "../Editor/EditorPropType";
 import { ValidationResult } from "../ValidationResult";
 
 import { configManager } from "../config/configManager";
+import type {
+  IconValue,
+  SmartRConfig,
+  SmartRValidator,
+  SmartRValidatorContext,
+  SmartRValidators,
+} from "../config/defaultConfig";
+import { resolveTranslation } from "./translate";
+
+/** A mask: a pattern, or alternatives chosen by the typed length (`["(00) 0000-0000", "(00) 00000-0000"]`). */
+export type MaskValue = string | string[];
+
+function isPhoneType(type: Input | undefined): boolean {
+  return type === Input.Phone || type === Input.Mobile || type === Input.Fax;
+}
+
+/** Number of input slots (`0`, `9`, `A`, `S`) of a mask pattern. */
+function maskSlots(mask: string): number {
+  let slots = 0;
+  for (const char of mask) {
+    if (char === "0" || char === "9" || char === "A" || char === "S") slots++;
+  }
+  return slots;
+}
+
+/**
+ * Picks the pattern of a mask for a value: a string mask is returned as-is;
+ * for alternatives, the one with the fewest slots that fits the value's
+ * letters/digits (the largest when none fits).
+ */
+export function selectMask(
+  mask: MaskValue | false | null | undefined,
+  value?: any
+): string | undefined {
+  if (!mask) return undefined;
+  if (!Array.isArray(mask)) return mask;
+  const list = mask.filter((m) => typeof m === "string" && m !== "");
+  if (list.length === 0) return undefined;
+  const sorted = [...list].sort((a, b) => maskSlots(a) - maskSlots(b));
+  const count = String(value ?? "").replace(/[^A-Za-z0-9]/g, "").length;
+  return sorted.find((m) => maskSlots(m) >= count) ?? sorted[sorted.length - 1];
+}
+
+/** Length of the longest pattern of a mask (used for `maxLength`). */
+export function maskMaxLength(mask: MaskValue | false | null | undefined): number {
+  if (!mask) return 0;
+  if (!Array.isArray(mask)) return mask.length;
+  return mask.reduce((longest, m) => Math.max(longest, (m || "").length), 0);
+}
+
+/** Phone country of an Editor: `mask="phone-xx"`, then `phoneCountry`, then `behavior.input.phoneCountry`. */
+function phoneCountryOf(props: EditorPropType, config: SmartRConfig): string | undefined {
+  const { mask } = props;
+  if (typeof mask === "string" && /^phone-/i.test(mask)) return mask.slice(6).toUpperCase();
+  const country = props.phoneCountry ?? config.behavior.input.phoneCountry;
+  return country ? String(country).toUpperCase() : undefined;
+}
+
+/**
+ * The mask an Editor uses:
+ * - `mask={false}`: none (also turns the default phone mask off);
+ * - `mask=""`: none when `behavior.input.emptyDisablesDefault` (non-Bootstrap
+ *   presets); in Bootstrap it falls back to the default, as in 1.1.0;
+ * - `mask="phone-br"` / `"phone-us"`…: `resources.masks.phoneByCountry`;
+ * - any other string / array: used as-is;
+ * - phone types without a mask: the `phoneCountry` mask, else `resources.masks.phone`.
+ */
+export function resolveEditorMask(
+  props: EditorPropType,
+  config: SmartRConfig = configManager.getConfig()
+): MaskValue | undefined {
+  const { type = Input.Text, mask } = props;
+  const byCountry = (country: string): MaskValue | undefined => {
+    const masks: Record<string, MaskValue> =
+      (config.resources.masks as any).phoneByCountry || {};
+    const found = masks[country.toUpperCase()];
+    return found && (!Array.isArray(found) || found.length) ? found : undefined;
+  };
+  if (mask === false) return undefined;
+  if (Array.isArray(mask)) return mask.length ? mask : undefined;
+  if (typeof mask === "string" && mask !== "") {
+    if (/^phone-/i.test(mask)) return byCountry(mask.slice(6));
+    return mask;
+  }
+  if (!isPhoneType(type)) return undefined;
+  if (mask === "" && config.behavior.input.emptyDisablesDefault) return undefined;
+  const country = props.phoneCountry ?? config.behavior.input.phoneCountry;
+  if (country) {
+    const countryMask = byCountry(String(country));
+    if (countryMask) return countryMask;
+  }
+  return config.resources.masks.phone || undefined;
+}
+
+/**
+ * The default placeholder of a phone Editor (`undefined` when the Editor
+ * has its own placeholder, opted out with `placeholder={false}` — or `""`
+ * with `behavior.input.emptyDisablesDefault` — or is not a phone type).
+ */
+export function resolveDefaultPlaceholder(
+  props: EditorPropType,
+  config: SmartRConfig = configManager.getConfig()
+): string | undefined {
+  const { type = Input.Text, placeholder } = props;
+  if (!isPhoneType(type)) return undefined;
+  if (placeholder === false || placeholder) return undefined;
+  if (placeholder === "" && config.behavior.input.emptyDisablesDefault) return undefined;
+  const placeHolders: any = config.components.editor.placeHolders;
+  const country = phoneCountryOf(props, config);
+  if (country && placeHolders.phoneByCountry?.[country]) {
+    return placeHolders.phoneByCountry[country];
+  }
+  return placeHolders.phone || undefined;
+}
+
+/**
+ * Resolves a validation message through `config.translate` (when configured)
+ * and replaces its `%sN` placeholders. Identical to 1.1.0 without `translate`.
+ */
+function validationMessage(
+  config: SmartRConfig,
+  key: string,
+  ...params: any[]
+): string {
+  const template = (config.resources.validationMessages as any)[key];
+  // `resources.validationMessages.X` first, then the `validation.X` alias;
+  // a missing translation (undefined / null / "") falls back to the template
+  const text = resolveTranslation(
+    config,
+    `validation.${key}`,
+    template,
+    params.length ? params : undefined
+  );
+  return params.length ? parameterizedString(text, ...params) : text;
+}
 
 type ClassValue = string | number | boolean | undefined | null;
 type ClassDictionary = Record<string, any>;
@@ -89,7 +223,7 @@ export function formatNumber(
 
   const parts = numberString.split(".");
   let wholeNumber = parts[0];
-  let decimalPart = parts[1];
+  const decimalPart = parts[1];
 
   if (thousandsSeparator) {
     wholeNumber = wholeNumber.replace(
@@ -125,10 +259,12 @@ export function getDefaultHasIcon(type: Input, isAsyncSelect: boolean = false) {
   );
 }
 
-export function getDefaultIconPosition(type: Input): IconPosition {
-  const config = configManager.getConfig();
+export function getDefaultIconPosition(
+  type: Input,
+  config: SmartRConfig = configManager.getConfig()
+): IconPosition {
 
-  // ✅ NOVO CAMINHO: config.resources.iconsPosition
+  // Positions come from config.resources.iconsPosition
   const iconsPosition = config.resources.iconsPosition;
 
   switch (type) {
@@ -192,8 +328,10 @@ export function getDefaultIconPosition(type: Input): IconPosition {
   return IconPosition.Start;
 }
 
-export function getDefaultIcon(type: Input) {
-  const config = configManager.getConfig();
+export function getDefaultIcon(
+  type: Input,
+  config: SmartRConfig = configManager.getConfig()
+): IconValue {
 
   const icons = config.resources.icons;
 
@@ -241,6 +379,8 @@ export function getValueType(type: Input) {
       return ValueType.Integer;
     case Input.CheckBox:
       return ValueType.Boolean;
+    case Input.Chips:
+      return ValueType.Array;
     default:
       return ValueType.String;
   }
@@ -371,32 +511,16 @@ export function getEditorAttributes(
   props: EditorPropType,
   isInvalid: boolean,
   editorValue: any,
-  showPassword: boolean
+  showPassword: boolean,
+  config: SmartRConfig = configManager.getConfig()
 ): Record<string, any> {
-  const config = configManager.getConfig();
   const {
     type = Input.Text,
-    className,
-    sm,
-    md,
-    lg,
-    xl,
-    xxl,
-    size,
-    children,
     id,
     name,
-    createRow = false,
-    title,
-    checkBoxText = "",
-    required = false,
-    value,
     placeholder,
-    hasTitle = true,
-    titleBold,
     enabled = true,
     readOnly = false,
-    inline = false,
     rows,
     input,
     characterCasing = CharacterCasing.Upper,
@@ -404,45 +528,12 @@ export function getEditorAttributes(
     min,
     maxDate,
     minDate,
-    mask,
-    getMaskedValue = false,
-    hasIcon = getDefaultHasIcon(props.type),
-    iconPosition = getDefaultIconPosition(props.type),
-    appendIcon = getDefaultIcon(props.type),
-    prependIcon = getDefaultIcon(props.type),
-    invalid,
-    tooltip,
-    toolTipPosition = TooltipPosition.Top,
-    invalidMessage,
-    requiredMessage,
     accept,
     multiple = false,
     skipSubmit = false,
-    optionsId = config.behavior.select.optionsId,
-    optionsDescription = config.behavior.select.optionsDescription,
-    optionsFirstSelected = config.behavior.select.optionsFirstSelected,
-    optionsNoneSelectedValue = config.behavior.select.optionsNoneSelectedValue,
-    optionsNoneSelectedText = config.components.select.texts
-      .optionsNoneSelectedText,
-    options,
-    thousandsSeparator = config.behavior.input.thousandsSeparator,
-    decimalSeparator = config.behavior.input.decimalSeparator,
-    formState,
-    dispatchFormState,
-    validateOnBlur = config.behavior.validation.validateOnBlur,
-    validateOnChange = false,
-    validateDefaultOnBlur = true,
-    validateDefaultOnChange = true,
-    validateDefaultOnSubmit = config.behavior.validation.validateOnSubmit,
-    customValidationOnBlur,
-    customValidationOnChange,
-    customValidationOnSubmit,
-    onChange,
-    onBlur,
-    showValidationResultOnSubmit = config.behavior.validation.validateOnSubmit,
-    ...attributes
   } = props;
-  let editorMask = mask;
+  // `mask={false}` / `phoneCountry` / `mask="phone-br"`… (see resolveEditorMask)
+  const editorMask = resolveEditorMask(props, config);
   const editorName = name || id;
   const editorAttributes: Record<string, any> = {};
 
@@ -638,17 +729,16 @@ export function getEditorAttributes(
     case Input.Fax:
       {
         editorAttributes["type"] = "tel";
-        if (!placeholder && config.components.editor.placeHolders.phone) {
-          editorAttributes["placeholder"] =
-            config.components.editor.placeHolders.phone;
-        }
-        if (!editorMask && config.resources.masks.phone) {
-          editorMask = config.resources.masks.phone;
+        // default (or per-country) placeholder, unless opted out
+        const defaultPlaceholder = resolveDefaultPlaceholder(props, config);
+        if (defaultPlaceholder) {
+          editorAttributes["placeholder"] = defaultPlaceholder;
         }
       }
       break;
     case Input.Select:
       {
+        // no type attribute
       }
       break;
     default:
@@ -667,7 +757,7 @@ export function getEditorAttributes(
   }
 
   if (editorMask) {
-    editorAttributes["data-mask"] = editorMask;
+    editorAttributes["data-mask"] = selectMask(editorMask, editorValue);
   }
   const isNumericInput = type === Input.Integer || type === Input.Range;
   if (type !== Input.File) {
@@ -679,7 +769,7 @@ export function getEditorAttributes(
       }
     }
     if (max !== undefined && max !== null && (isNumericInput || max > 0)) {
-      let maskLength = (editorMask ?? "").length;
+      const maskLength = maskMaxLength(editorMask);
       if (isNumericInput) {
         editorAttributes["max"] = String(max);
       } else {
@@ -687,6 +777,7 @@ export function getEditorAttributes(
       }
     }
     if (placeholder) {
+      // `placeholder={false}` renders none
       editorAttributes["placeholder"] = placeholder;
     }
   }
@@ -728,11 +819,13 @@ export function getEditorAttributes(
 
 export function removeMask(
   type: Input,
-  editorMask: string,
+  mask: MaskValue,
   maskedValue,
   thousandsSeparator: string,
   decimalSeparator: string
 ) {
+  // alternatives (`["(00) 0000-0000", "(00) 00000-0000"]`): the one that fits
+  const editorMask = Array.isArray(mask) ? selectMask(mask, maskedValue) : mask;
   if (
     !editorMask &&
     type !== Input.Money &&
@@ -784,12 +877,14 @@ export function removeMask(
 
 export function applyMask(
   type: Input,
-  editorMask: string,
+  mask: MaskValue,
   input: any,
   thousandsSeparator: string,
   decimalSeparator: string,
   decimalPlaces: number
 ) {
+  // alternatives (`["(00) 0000-0000", "(00) 00000-0000"]`): the one that fits
+  const editorMask = Array.isArray(mask) ? selectMask(mask, input) : mask;
   if (
     !input ||
     (type !== Input.Text &&
@@ -867,7 +962,7 @@ export function applyMask(
     }
     input = input.replace(/[^\d]/g, "");
     input = input.replace(/,+/g, ",");
-    let numericValue = parseFloat(input);
+    const numericValue = parseFloat(input);
     let wholeNumber = 0;
     let decimalNumber = 0;
     if (numericValue >= Math.pow(10, decimalPlaces)) {
@@ -876,7 +971,7 @@ export function applyMask(
     } else {
       decimalNumber = numericValue;
     }
-    var number = parseFloat(
+    const number = parseFloat(
       `${wholeNumber}.${decimalNumber.toString().padStart(decimalPlaces, "0")}`
     );
 
@@ -889,17 +984,63 @@ export function applyMask(
   }
   return maskedValue;
 }
+/** The 1.1.0 e-mail rule (Bootstrap, `behavior.validation.emailRule: "legacy"`). */
+const legacyEmailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+/**
+ * `emailRule: "unicode"`: any non-space local part, unicode (IDN) or punycode
+ * domain labels, a letter TLD of 2+ characters (or a punycode TLD).
+ */
+const unicodeEmailRegex =
+  /^[^\s@]+@(?:[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?\.)+(?:\p{L}{2,}|xn--[a-z0-9-]{2,})$/iu;
+
+/** The built-in e-mail rule of a configuration (see `behavior.validation.emailRule`). */
+export function isValidEmail(
+  value: any,
+  config: SmartRConfig = configManager.getConfig()
+): boolean {
+  if ((config.behavior.validation as any).emailRule === "unicode") {
+    return unicodeEmailRegex.test(String(value ?? "").trim());
+  }
+  return legacyEmailRegex.test(String(value));
+}
+
+/**
+ * The rule configured for `key`: the Editor's `validators` prop first, then
+ * `config.validators`. `false` turns the rule off; `undefined` keeps the built-in one.
+ */
+function resolveValidator(
+  props: EditorPropType,
+  config: SmartRConfig,
+  key: keyof SmartRValidators
+): SmartRValidator | false | undefined {
+  const own = props.validators?.[key];
+  if (own !== undefined) return own === null ? undefined : own;
+  const global = config.validators?.[key];
+  return global === null ? undefined : global;
+}
+
+/** `true` when valid, `false` to use the default message, or the message. */
+function runValidator(
+  validator: SmartRValidator,
+  value: any,
+  context: SmartRValidatorContext
+): true | false | string {
+  const result = validator(value, context);
+  if (result === false) return false;
+  if (typeof result === "string" && result !== "") return result;
+  return true;
+}
+
 export function validateEditorInputValue(
   currentValue: any,
   props: EditorPropType,
-  editorMask?: string
+  editorMask?: MaskValue,
+  config: SmartRConfig = configManager.getConfig()
 ) {
-  const config = configManager.getConfig();
   const {
     type = Input.Text,
     id,
     name,
-    title,
     required = false,
     max,
     min,
@@ -908,20 +1049,40 @@ export function validateEditorInputValue(
     maxFileSize,
     requiredMessage,
   } = props;
+  // The Editor passes a plain-text title (React-node titles are converted)
+  const title = props.title as string;
   const editorName = name || id;
-  let list: ValidationResult[] = [];
+  const list: ValidationResult[] = [];
+  const context: SmartRValidatorContext = { type, id, name: editorName, title, config };
+  const fail = (message: string) =>
+    list.push(
+      new ValidationResult(editorName, title, ValidationMessage.Error, message, currentValue)
+    );
 
-  if (
+  const isEmpty =
     !currentValue ||
-    (currentValue instanceof FileList && currentValue.length === 0)
-  ) {
-    if (required) {
+    (currentValue instanceof FileList && currentValue.length === 0) ||
+    (Array.isArray(currentValue) && currentValue.length === 0);
+
+  // Pluggable `required` rule (`validators.required`): decides whether the value is present
+  const requiredRule = resolveValidator(props, config, "required");
+  if (required && typeof requiredRule === "function") {
+    const result = runValidator(requiredRule, currentValue, context);
+    if (result !== true) {
+      fail(result === false ? requiredMessage || validationMessage(config, "required") : result);
+      return list;
+    }
+    if (isEmpty) return list;
+  }
+
+  if (isEmpty) {
+    if (required && requiredRule !== false) {
       list.push(
         new ValidationResult(
           editorName,
           title,
           ValidationMessage.Error,
-          requiredMessage || config.resources.validationMessages.required, // ✅ CAMINHO ATUALIZADO
+          requiredMessage || validationMessage(config, "required"),
           currentValue
         )
       );
@@ -931,9 +1092,9 @@ export function validateEditorInputValue(
     ((min && min > 0) || (max && max > 0))
   ) {
     const currentValueString = String(currentValue);
-    let maskLength = (editorMask ?? "").length;
-    let minCharacter = Number(min);
-    let maxCharacter = Math.max(max, maskLength);
+    const maskLength = maskMaxLength(editorMask);
+    const minCharacter = Number(min);
+    const maxCharacter = Math.max(max, maskLength);
     if (min && min > 0 && max && max > 0) {
       if (
         currentValueString.length < minCharacter ||
@@ -944,11 +1105,8 @@ export function validateEditorInputValue(
             editorName,
             title,
             ValidationMessage.Error,
-            parameterizedString(
-              config.resources.validationMessages.minMaxCharacters, // ✅ CAMINHO ATUALIZADO
-              minCharacter,
-              maxCharacter
-            ),
+            validationMessage(config, "minMaxCharacters", minCharacter,
+              maxCharacter),
             currentValue
           )
         );
@@ -960,11 +1118,8 @@ export function validateEditorInputValue(
           title,
           ValidationMessage.Error,
           minCharacter > 1
-            ? parameterizedString(
-                config.resources.validationMessages.minCharacters,
-                minCharacter
-              ) // ✅ CAMINHO ATUALIZADO
-            : config.resources.validationMessages.minCharacter, // ✅ CAMINHO ATUALIZADO
+            ? validationMessage(config, "minCharacters", minCharacter)
+            : validationMessage(config, "minCharacter"),
           currentValue
         )
       );
@@ -975,20 +1130,17 @@ export function validateEditorInputValue(
           title,
           ValidationMessage.Error,
           maxCharacter > 1
-            ? parameterizedString(
-                config.resources.validationMessages.maxCharacters,
-                maxCharacter
-              ) // ✅ CAMINHO ATUALIZADO
-            : config.resources.validationMessages.maxCharacter, // ✅ CAMINHO ATUALIZADO
+            ? validationMessage(config, "maxCharacters", maxCharacter)
+            : validationMessage(config, "maxCharacter"),
           currentValue
         )
       );
     }
   } else if (type === Input.Integer && ((min && min > 0) || (max && max > 0))) {
-    let currentValueNumber = parseInt(currentValue, 10);
+    const currentValueNumber = parseInt(currentValue, 10);
     if (!isNaN(currentValueNumber)) {
-      let minNumber = Number(min);
-      let maxNumber = Number(max);
+      const minNumber = Number(min);
+      const maxNumber = Number(max);
       if (min && min > 0 && max && max > 0) {
         if (currentValueNumber < minNumber || currentValueNumber > maxNumber) {
           list.push(
@@ -996,11 +1148,8 @@ export function validateEditorInputValue(
               editorName,
               title,
               ValidationMessage.Error,
-              parameterizedString(
-                config.resources.validationMessages.minMaxNumber, // ✅ CAMINHO ATUALIZADO
-                minNumber,
-                maxNumber
-              ),
+              validationMessage(config, "minMaxNumber", minNumber,
+                maxNumber),
               currentValue
             )
           );
@@ -1011,10 +1160,7 @@ export function validateEditorInputValue(
             editorName,
             title,
             ValidationMessage.Error,
-            parameterizedString(
-              config.resources.validationMessages.minNumber,
-              minNumber
-            ), // ✅ CAMINHO ATUALIZADO
+            validationMessage(config, "minNumber", minNumber),
             currentValue
           )
         );
@@ -1024,10 +1170,7 @@ export function validateEditorInputValue(
             editorName,
             title,
             ValidationMessage.Error,
-            parameterizedString(
-              config.resources.validationMessages.maxNumber,
-              maxNumber
-            ), // ✅ CAMINHO ATUALIZADO
+            validationMessage(config, "maxNumber", maxNumber),
             currentValue
           )
         );
@@ -1038,16 +1181,16 @@ export function validateEditorInputValue(
           editorName,
           title,
           ValidationMessage.Error,
-          requiredMessage || config.resources.validationMessages.number, // ✅ CAMINHO ATUALIZADO
+          requiredMessage || validationMessage(config, "number"),
           currentValue
         )
       );
     }
   } else if (type === Input.Decimal && ((min && min > 0) || (max && max > 0))) {
-    let currentValueNumber = parseFloat(currentValue);
+    const currentValueNumber = parseFloat(currentValue);
     if (!isNaN(currentValueNumber)) {
-      let minNumber = Number(min);
-      let maxNumber = Number(max);
+      const minNumber = Number(min);
+      const maxNumber = Number(max);
       if (min && min > 0 && max && max > 0) {
         if (currentValueNumber < minNumber || currentValueNumber > maxNumber) {
           list.push(
@@ -1055,11 +1198,8 @@ export function validateEditorInputValue(
               editorName,
               title,
               ValidationMessage.Error,
-              parameterizedString(
-                config.resources.validationMessages.minMaxNumber, // ✅ CAMINHO ATUALIZADO
-                minNumber,
-                maxNumber
-              ),
+              validationMessage(config, "minMaxNumber", minNumber,
+                maxNumber),
               currentValue
             )
           );
@@ -1070,10 +1210,7 @@ export function validateEditorInputValue(
             editorName,
             title,
             ValidationMessage.Error,
-            parameterizedString(
-              config.resources.validationMessages.minNumber,
-              minNumber
-            ), // ✅ CAMINHO ATUALIZADO
+            validationMessage(config, "minNumber", minNumber),
             currentValue
           )
         );
@@ -1083,10 +1220,7 @@ export function validateEditorInputValue(
             editorName,
             title,
             ValidationMessage.Error,
-            parameterizedString(
-              config.resources.validationMessages.maxNumber,
-              maxNumber
-            ), // ✅ CAMINHO ATUALIZADO
+            validationMessage(config, "maxNumber", maxNumber),
             currentValue
           )
         );
@@ -1097,23 +1231,34 @@ export function validateEditorInputValue(
           editorName,
           title,
           ValidationMessage.Error,
-          requiredMessage || config.resources.validationMessages.number, // ✅ CAMINHO ATUALIZADO
+          requiredMessage || validationMessage(config, "number"),
           currentValue
         )
       );
     }
   } else if (type === Input.Email) {
-    const regex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!regex.test(String(currentValue))) {
+    const rule = resolveValidator(props, config, "email");
+    if (typeof rule === "function") {
+      const result = runValidator(rule, currentValue, context);
+      if (result !== true) fail(result === false ? validationMessage(config, "email") : result);
+    } else if (rule !== false && !isValidEmail(currentValue, config)) {
       list.push(
         new ValidationResult(
           editorName,
           title,
           ValidationMessage.Error,
-          config.resources.validationMessages.email, // ✅ CAMINHO ATUALIZADO
+          validationMessage(config, "email"),
           currentValue
         )
       );
+    }
+  } else if (isPhoneType(type) || type === Input.Url) {
+    // no built-in rule: only a configured `validators.phone` / `validators.url`
+    const key = type === Input.Url ? "url" : "phone";
+    const rule = resolveValidator(props, config, key);
+    if (typeof rule === "function") {
+      const result = runValidator(rule, currentValue, context);
+      if (result !== true) fail(result === false ? validationMessage(config, key) : result);
     }
   } else if (type === Input.File) {
     if (currentValue) {
@@ -1123,10 +1268,7 @@ export function validateEditorInputValue(
             editorName,
             title,
             ValidationMessage.Error,
-            parameterizedString(
-              config.resources.validationMessages.totalFilesAllowedExceeded, // ✅ CAMINHO ATUALIZADO
-              maxFiles
-            ),
+            validationMessage(config, "totalFilesAllowedExceeded", maxFiles),
             currentValue
           )
         );
@@ -1139,11 +1281,8 @@ export function validateEditorInputValue(
               editorName,
               title,
               ValidationMessage.Error,
-              parameterizedString(
-                config.resources.validationMessages.fileSizeExceededMaxAllowed, // ✅ CAMINHO ATUALIZADO
-                file.name,
-                bytesToHumanReadable(maxFileSize)
-              ),
+              validationMessage(config, "fileSizeExceededMaxAllowed", file.name,
+                bytesToHumanReadable(maxFileSize)),
               currentValue
             )
           );
@@ -1176,7 +1315,7 @@ export function classNames(
         classes.push(arg.toString());
       } else {
         for (const key in arg) {
-          if (arg.hasOwnProperty(key) && arg[key]) {
+          if (Object.prototype.hasOwnProperty.call(arg, key) && arg[key]) {
             classes.push(key);
           }
         }

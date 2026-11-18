@@ -4,6 +4,7 @@ import { EditorInput } from "../EditorInput/EditorInput";
 import { Input, TooltipPosition } from "../types";
 import { Tooltip } from "../Tooltip/Tooltip";
 import { useSmartConfig } from "../hook/useSmartConfig";
+import { renderIcon, translateText, withSlot } from "../Utils/styling";
 
 interface FilePropTypes {
   id?: string;
@@ -21,14 +22,25 @@ interface FilePropTypes {
     HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
   >;
   className?: string;
+  /** Per-instance class overrides (merged after the configured classes). */
+  slotClassNames?: { inputGroup?: string; icon?: string };
+  /**
+   * ARIA mode (`behavior.accessibility.aria`): the upload/delete/download
+   * controls get `role="button"`, `tabIndex=0`, an `aria-label` and
+   * Enter/Space activation.
+   */
+  accessible?: boolean;
 }
 
 export function File(props: FilePropTypes) {
   const config = useSmartConfig();
   const {
-    id,
     name,
-    placeholder = config.behavior.file.filePlaceholderText,
+    placeholder = translateText(
+      config,
+      "file.placeholder",
+      config.behavior.file.filePlaceholderText
+    ),
     editorAttributes,
     maxFilesPlaceholder = config.behavior.file.maxFilesPlaceholder,
     fileUrlDownload,
@@ -39,12 +51,15 @@ export function File(props: FilePropTypes) {
     onChangeEvent,
     inputRef,
     className,
-    ...attributes
+    slotClassNames = {},
+    accessible = false,
   } = props;
   const [fileName, setFileName] = useState<string>();
   const inputUploadRef = useRef<
     HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
   >(null);
+  const editorClasses = config.components.editor.classes;
+  const icons = config.resources.icons;
 
   const finalInputRef = inputRef || inputUploadRef;
   const handleFileChange = async (
@@ -53,7 +68,11 @@ export function File(props: FilePropTypes) {
     const files = event.target.files;
     let fileNames;
     if (files.length > maxFilesPlaceholder) {
-      fileNames = `${files.length} ${config.resources.fileTexts.totalSelectedFiles}`;
+      fileNames = `${files.length} ${translateText(
+        config,
+        "file.texts.totalSelectedFiles",
+        config.resources.fileTexts.totalSelectedFiles
+      )}`;
     } else {
       const fileNamesArray = [];
       for (let i = 0; i < files.length; i++) {
@@ -74,6 +93,31 @@ export function File(props: FilePropTypes) {
     const fileName = url.substring(lastSlashIndex + 1);
     return fileName;
   }
+
+  const fileTexts: Record<string, string> = config.resources.fileTexts as any;
+  const buttonText = (key: "uploadLabel" | "deleteLabel" | "downloadLabel", fallback: string) =>
+    translateText(config, `file.texts.${key}`, fileTexts[key] ?? fallback);
+  /**
+   * Accessibility of an icon button: a visible text when the icon is `false`
+   * (nothing would be rendered otherwise), and — in ARIA mode — button
+   * semantics with an accessible name and keyboard activation.
+   */
+  const buttonProps = (label: string, onActivate?: (event: any) => void) =>
+    accessible
+      ? {
+          role: "button",
+          tabIndex: 0,
+          "aria-label": label,
+          onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onActivate?.(event);
+            }
+          },
+        }
+      : {};
+  const iconOrText = (icon: any, label: string) =>
+    icon === false ? label : renderIcon(icon);
 
   const handleBlurEvent = async (event: React.FocusEvent<HTMLInputElement>) => {
     if (onBlurEvent) {
@@ -131,6 +175,15 @@ export function File(props: FilePropTypes) {
     inputAttributes["placeholder"] = placeholder;
   }
   inputAttributes["defaultValue"] = fileName;
+  if (accessible) {
+    // ARIA mode: the visible text box is described by the note / messages too
+    if (editorAttributes?.["aria-describedby"]) {
+      inputAttributes["aria-describedby"] = editorAttributes["aria-describedby"];
+    }
+    if (editorAttributes?.["aria-invalid"]) {
+      inputAttributes["aria-invalid"] = editorAttributes["aria-invalid"];
+    }
+  }
 
   const input = (
     <EditorInput
@@ -158,18 +211,28 @@ export function File(props: FilePropTypes) {
     onDeleteFileClick || fileName ? (
       <Tooltip
         position={TooltipPosition.Top}
-        text={config.resources.fileTexts.deleteTooltip}
+        text={translateText(
+          config,
+          "file.texts.deleteTooltip",
+          config.resources.fileTexts.deleteTooltip
+        )}
       >
         <div
-          className={config.components.editor.classes.inputGroupAppendFile}
+          className={editorClasses.inputGroupAppendFile}
           onClick={fileName ? handleDeleteClick : onDeleteFileClick}
+          {...buttonProps(
+            buttonText("deleteLabel", "Remove file"),
+            fileName ? handleDeleteClick : onDeleteFileClick
+          )}
         >
           <span
-            className={
-              config.components.editor.classes.inputGroupFileDeleteIcon
-            }
+            className={withSlot(
+              config,
+              editorClasses.inputGroupFileDeleteIcon,
+              slotClassNames.icon
+            )}
           >
-            <i className={config.resources.icons.delete}></i>
+            {iconOrText(icons.delete, buttonText("deleteLabel", "Remove file"))}
           </span>
         </div>
       </Tooltip>
@@ -178,18 +241,31 @@ export function File(props: FilePropTypes) {
     fileUrlDownload || onDownloadFileClick ? (
       <Tooltip
         position={TooltipPosition.Top}
-        text={config.resources.fileTexts.downloadTooltip}
+        text={translateText(
+          config,
+          "file.texts.downloadTooltip",
+          config.resources.fileTexts.downloadTooltip
+        )}
       >
         <div
-          className={config.components.editor.classes.inputGroupAppendFile}
+          className={editorClasses.inputGroupAppendFile}
           onClick={onDownloadFileClick ?? handleDownloadClick}
+          {...buttonProps(
+            buttonText("downloadLabel", "Download file"),
+            onDownloadFileClick ?? handleDownloadClick
+          )}
         >
           <span
-            className={
-              config.components.editor.classes.inputGroupFileDownloadIcon
-            }
+            className={withSlot(
+              config,
+              editorClasses.inputGroupFileDownloadIcon,
+              slotClassNames.icon
+            )}
           >
-            <i className={config.resources.icons.download}></i>
+            {iconOrText(
+              icons.download,
+              buttonText("downloadLabel", "Download file")
+            )}
           </span>
         </div>
       </Tooltip>
@@ -197,16 +273,25 @@ export function File(props: FilePropTypes) {
   const uploadIconComponent = (
     <Tooltip
       position={TooltipPosition.Top}
-      text={config.resources.fileTexts.uploadTooltip}
+      text={translateText(
+        config,
+        "file.texts.uploadTooltip",
+        config.resources.fileTexts.uploadTooltip
+      )}
     >
       <div
-        className={config.components.editor.classes.inputGroupAppendFile}
+        className={editorClasses.inputGroupAppendFile}
         onClick={handleUploadClick}
+        {...buttonProps(buttonText("uploadLabel", "Choose file"), handleUploadClick)}
       >
         <span
-          className={config.components.editor.classes.inputGroupFileUploadIcon}
+          className={withSlot(
+            config,
+            editorClasses.inputGroupFileUploadIcon,
+            slotClassNames.icon
+          )}
         >
-          <i className={config.resources.icons.upload}></i>
+          {iconOrText(icons.upload, buttonText("uploadLabel", "Choose file"))}
         </span>
       </div>
     </Tooltip>
@@ -214,7 +299,11 @@ export function File(props: FilePropTypes) {
   const optionsGroup = React.createElement(
     "div",
     {
-      className: config.components.editor.classes.inputGroup,
+      className: withSlot(
+        config,
+        editorClasses.inputGroup,
+        slotClassNames.inputGroup
+      ),
     },
     input,
     deleteIconComponent,

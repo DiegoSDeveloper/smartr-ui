@@ -1,7 +1,7 @@
-import { ColumnSize, ScreenSize } from "../types";
+import { ColumnSize } from "../types";
 import React from "react";
-import { getColumnSize, mapToCssModules } from "../Utils/utils";
-import { classNames } from "../Utils/utils";
+import { mapToCssModules } from "../Utils/utils";
+import { cxInstance, getGridColumnClasses } from "../Utils/styling";
 import { useSmartConfig } from "../hook/useSmartConfig";
 
 /**
@@ -20,7 +20,7 @@ interface columnPropTypes {
   children?: React.ReactNode;
 }
 
-export const Column = React.forwardRef<HTMLElement, columnPropTypes>(
+export const Column = /*#__PURE__*/ React.forwardRef<HTMLElement, columnPropTypes>(
   (props, ref) => {
     const config = useSmartConfig();
     const {
@@ -37,30 +37,18 @@ export const Column = React.forwardRef<HTMLElement, columnPropTypes>(
       ...attributes
     } = props;
 
-    let colClasses = "";
-    if (size) {
-      colClasses += getColumnSize(size);
-    }
-    if (xs) {
-      colClasses += ` ${getColumnSize(xs, ScreenSize.XS)}`;
-    }
-    if (sm) {
-      colClasses += ` ${getColumnSize(sm, ScreenSize.SM)}`;
-    }
-    if (md) {
-      colClasses += ` ${getColumnSize(md, ScreenSize.MD)}`;
-    }
-    if (lg) {
-      colClasses += ` ${getColumnSize(lg, ScreenSize.LG)}`;
-    }
-    if (xl) {
-      colClasses += ` ${getColumnSize(xl, ScreenSize.XL)}`;
-    }
-    if (xxl) {
-      colClasses += ` ${getColumnSize(xxl, ScreenSize.XXL)}`;
-    }
+    // Classes come from `config.grid` (Bootstrap: col-*, Tailwind: col-span-*)
+    const colClasses = getGridColumnClasses(config, {
+      size,
+      xs,
+      sm,
+      md,
+      lg,
+      xl,
+      xxl,
+    });
 
-    const classes = mapToCssModules(classNames(className, colClasses));
+    const classes = mapToCssModules(cxInstance(config, className, colClasses));
 
     return React.createElement(
       tag,

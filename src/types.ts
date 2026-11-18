@@ -52,6 +52,8 @@ export enum Input {
   Week = 24,
   Color = 25,
   Range = 26,
+  /** Multi-select rendered as toggle chips (checkbox semantics). Value: array (or a separated string). */
+  Chips = 27,
 }
 export enum YesNo {
   Yes,

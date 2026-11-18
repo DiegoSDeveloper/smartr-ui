@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { EditorInput } from "../EditorInput/EditorInput";
 import { Input } from "../types";
 import { mapToCssModules } from "../Utils/utils";
-import { classNames } from "../Utils/utils";
+import { cx, dataAttrs, legacyClass, translateText } from "../Utils/styling";
 import { useSmartConfig } from "../hook/useSmartConfig";
+import type { SmartRControlComponent } from "../config/defaultConfig";
 import { SelectOption } from "./SelectOption";
 
 interface SelectPropTypes {
@@ -40,6 +41,12 @@ interface SelectPropTypes {
     HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
   >;
   className?: string;
+  /** Render slot for the native `<select>` (see `SmartRControlProps`). */
+  control?: SmartRControlComponent;
+  /** Semantic state passed to custom controls / data-attributes. */
+  controlState?: { required?: boolean; invalid?: boolean };
+  /** Data passed to the select render slot only (`options`, `multiple`, `noneOption`). */
+  controlData?: Record<string, any>;
 }
 
 interface CustomSelectState {
@@ -61,11 +68,9 @@ const Select = (props: SelectPropTypes) => {
     optionsMultiple,
     optionsLimiteDescriptionSelected,
     optionsMultipleSeparatorValue,
-    optionsMultipleSeparatorDescription,
     optionsNoneSelectedValue,
     optionsNoneSelectedText,
     editorAttributes,
-    placeholder,
     searchPlaceholder,
     value,
     enabled = true,
@@ -76,9 +81,14 @@ const Select = (props: SelectPropTypes) => {
     inputRef,
     className,
     children,
-    ...attributes
+    control,
+    controlState,
+    controlData,
   } = props;
   const config = useSmartConfig();
+  const selectTexts = config.components.select.texts;
+  const text = (key: keyof typeof selectTexts, ...params: any[]) =>
+    translateText(config, `select.texts.${String(key)}`, selectTexts[key], ...params);
   // Se não tem filter, não é multiple, não tem render customizado e não é agrupado,
   // renderiza o select nativo simples
   const shouldUseNativeSelect =
@@ -87,29 +97,9 @@ const Select = (props: SelectPropTypes) => {
   // Verifica se o componente está desabilitado ou somente leitura
   const isDisabled = !enabled || readOnly;
 
-  if (shouldUseNativeSelect) {
-    return (
-      <EditorInput
-        type={Input.Select}
-        inputType="select"
-        editorAttributes={{
-          ...editorAttributes,
-          disabled: isDisabled,
-          readOnly: readOnly,
-        }}
-        onBlurEvent={isDisabled ? undefined : onBlurEvent}
-        onChangeEvent={isDisabled ? undefined : onChangeEvent}
-        inputRef={inputRef}
-        children={children}
-        className={classNames(className, {
-          [config.components.editor.classes.controlGroupDisabledControl]:
-            isDisabled,
-        })}
-      ></EditorInput>
-    );
-  }
-
-  // Código do select customizado continua aqui...
+  // Hooks of the custom select, declared before the native early return so the
+  // hook order never changes between renders (rules of hooks). The effect does
+  // nothing for the native select.
   const [filterState, setFilterState] = useState<CustomSelectState>({
     isOpen: false,
     searchText: "",
@@ -117,15 +107,8 @@ const Select = (props: SelectPropTypes) => {
   const [containerWidth, setContainerWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef(null);
-  const { isOpen, searchText } = filterState;
-
-  let innerChildren = null;
-  let editorValue = value;
-
-  let editorDescription = null;
-  let selecteds = [];
-  let selectLabelText = config.components.select.texts.multipleSelectAll;
   useEffect(() => {
+    if (shouldUseNativeSelect) return;
     if (isDisabled) {
       setFilterState((prevState) => ({
         ...prevState,
@@ -165,6 +148,41 @@ const Select = (props: SelectPropTypes) => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [filterState.isOpen, isDisabled]);
+
+  if (shouldUseNativeSelect) {
+    return (
+      <EditorInput
+        type={Input.Select}
+        inputType="select"
+        editorAttributes={{
+          ...editorAttributes,
+          disabled: isDisabled,
+          readOnly: readOnly,
+        }}
+        onBlurEvent={isDisabled ? undefined : onBlurEvent}
+        onChangeEvent={isDisabled ? undefined : onChangeEvent}
+        inputRef={inputRef}
+        children={children}
+        className={cx(config, className, {
+          [config.components.editor.classes.controlGroupDisabledControl]:
+            isDisabled,
+        })}
+        control={control}
+        controlState={controlState}
+        controlData={controlData}
+      ></EditorInput>
+    );
+  }
+
+  // Código do select customizado continua aqui...
+  const { searchText } = filterState;
+
+  let innerChildren = null;
+  let editorValue = value;
+
+  let editorDescription = null;
+  let selecteds = [];
+  let selectLabelText = text("multipleSelectAll");
 
   const toggleDropdown = () => {
     if (isDisabled) return;
@@ -248,7 +266,7 @@ const Select = (props: SelectPropTypes) => {
         : [];
     if (!optionsMultiple) {
       if (!optionsFirstSelected) {
-        let noneSelectOption = {};
+        const noneSelectOption = {};
         noneSelectOption[optionsId] = optionsNoneSelectedValue;
         noneSelectOption[optionsDescription] = optionsNoneSelectedText;
         dataSource.unshift(noneSelectOption);
@@ -314,10 +332,10 @@ const Select = (props: SelectPropTypes) => {
       }
 
       if (selecteds.length === 0) {
-        selectLabelText = config.components.select.texts.multipleSelectAll;
-        editorDescription = config.components.select.texts.multipleNoneSelected;
+        selectLabelText = text("multipleSelectAll");
+        editorDescription = text("multipleNoneSelected");
       } else if (selecteds.length === dataSource.length) {
-        selectLabelText = config.components.select.texts.multipleSelectNone;
+        selectLabelText = text("multipleSelectNone");
       }
       if (selecteds.length > 0) {
         if (selecteds.length <= optionsLimiteDescriptionSelected) {
@@ -329,7 +347,7 @@ const Select = (props: SelectPropTypes) => {
             config.behavior.select.optionsMultipleSeparatorDescription
           );
         } else {
-          editorDescription = `${selecteds.length} ${config.components.select.texts.multipleSelected}`;
+          editorDescription = `${selecteds.length} ${text("multipleSelected")}`;
         }
       }
     }
@@ -414,12 +432,14 @@ const Select = (props: SelectPropTypes) => {
     }
   }
 
+  const selectClasses = config.components.select.classes;
   const classes = mapToCssModules(
-    classNames(className, config.components.select.classes.container, {
+    cx(config, className, selectClasses.container, {
       [config.components.editor.classes.controlGroupDisabledControl]:
         isDisabled,
     })
   );
+  const openClass = filterState.isOpen ? selectClasses.open : "";
 
   return (
     <div
@@ -427,6 +447,12 @@ const Select = (props: SelectPropTypes) => {
       tabIndex={isDisabled ? -1 : 0}
       className={classes}
       onClick={isDisabled ? undefined : toggleDropdown}
+      {...dataAttrs(config, {
+        state: filterState.isOpen ? "open" : "closed",
+        disabled: isDisabled,
+        invalid: controlState?.invalid,
+        required: controlState?.required,
+      })}
     >
       <EditorInput
         type={Input.Hidden}
@@ -440,14 +466,18 @@ const Select = (props: SelectPropTypes) => {
         inputRef={inputRef}
       ></EditorInput>
       <div
-        className={`${config.components.select.classes.innerContainer} ${
-          filterState.isOpen ? "open" : ""
-        }`}
+        className={legacyClass(
+          config,
+          `${selectClasses.innerContainer} ${openClass}`,
+          [selectClasses.innerContainer, openClass]
+        )}
       >
         <div
-          className={`${config.components.select.classes.optionSelectedInput} ${
-            filterState.isOpen ? "open" : ""
-          }`}
+          className={legacyClass(
+            config,
+            `${selectClasses.optionSelectedInput} ${openClass}`,
+            [selectClasses.optionSelectedInput, openClass]
+          )}
         >
           {editorDescription}
         </div>

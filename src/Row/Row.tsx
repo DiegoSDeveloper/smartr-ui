@@ -1,6 +1,7 @@
 import React from "react";
-import { classNames } from "../Utils/utils";
 import { mapToCssModules } from "../Utils/utils";
+import { cxInstance } from "../Utils/styling";
+import { useSmartConfig } from "../hook/useSmartConfig";
 
 /**
  * Row definition
@@ -12,7 +13,8 @@ interface rowPropTypes {
   style?: React.CSSProperties;
 }
 
-export const Row = React.forwardRef<HTMLElement, rowPropTypes>((props, ref) => {
+export const Row = /*#__PURE__*/ React.forwardRef<HTMLElement, rowPropTypes>((props, ref) => {
+  const config = useSmartConfig();
   const {
     className,
     style,
@@ -21,7 +23,7 @@ export const Row = React.forwardRef<HTMLElement, rowPropTypes>((props, ref) => {
     ...attributes
   } = props;
 
-  const classes = mapToCssModules(classNames(className, "row"));
+  const classes = mapToCssModules(cxInstance(config, className, config.grid.row));
 
   return React.createElement(
     Tag,

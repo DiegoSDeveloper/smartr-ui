@@ -1,0 +1,8 @@
+{
+  "name": "smartr-ui/presets/shadcn",
+  "private": true,
+  "main": "../../dist/presets/shadcn.js",
+  "module": "../../dist/presets/shadcn.esm.js",
+  "types": "../../dist/presets/shadcn.d.ts",
+  "sideEffects": false
+}

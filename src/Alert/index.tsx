@@ -1,6 +1,6 @@
 import { useSmartConfig } from "../hook/useSmartConfig";
 import { mapToCssModules } from "../Utils/utils";
-import { classNames } from "../Utils/utils";
+import { cx, dataAttrs } from "../Utils/styling";
 
 export enum AlertType {
   Success = 1,
@@ -9,7 +9,7 @@ export enum AlertType {
   Info = 4,
 }
 
-// Interface para as configurações do Alert baseada na sua estrutura
+// Alert configuration (global config `components.alert` or per instance)
 export interface AlertConfig {
   textAlign?: "center" | "left" | "right";
   classes: {
@@ -18,6 +18,9 @@ export interface AlertConfig {
     warning: string;
     danger: string;
     info: string;
+    textCenter?: string;
+    textLeft?: string;
+    textRight?: string;
   };
 }
 
@@ -25,16 +28,23 @@ interface AlertProps {
   type: AlertType;
   className?: string;
   children?: React.ReactNode;
-  config?: Partial<AlertConfig>; // Configurações opcionais por instância
+  config?: Partial<AlertConfig>; // Optional per-instance configuration
 }
+
+const ALERT_STATE: Record<number, string> = {
+  [AlertType.Success]: "success",
+  [AlertType.Warning]: "warning",
+  [AlertType.Danger]: "danger",
+  [AlertType.Info]: "info",
+};
 
 export function Alert(props: AlertProps) {
   const { type, children, className, config = {} } = props;
 
-  // Busca configurações do usuário via hook
+  // User configuration (provider or global configManager)
   const userConfig = useSmartConfig();
 
-  // Configuração padrão fallback baseada na sua estrutura
+  // Fallback configuration (Bootstrap)
   const defaultConfig: AlertConfig = {
     textAlign: "center",
     classes: {
@@ -43,14 +53,17 @@ export function Alert(props: AlertProps) {
       warning: "alert-warning",
       danger: "alert-danger",
       info: "alert-info",
+      textCenter: "text-center",
+      textLeft: "text-left",
+      textRight: "text-right",
     },
   };
 
-  // Merge das configurações
+  // Merge configurations
   const mergedConfig: AlertConfig = {
     ...defaultConfig,
-    ...userConfig.components?.alert, // Configurações do usuário do smart config
-    ...config, // Configurações por instância
+    ...(userConfig.components?.alert as any), // smart config
+    ...config, // per instance
     classes: {
       ...defaultConfig.classes,
       ...userConfig.components.alert.classes,
@@ -74,21 +87,25 @@ export function Alert(props: AlertProps) {
       break;
   }
 
+  const alignClass =
+    mergedConfig.textAlign === "center"
+      ? mergedConfig.classes.textCenter
+      : mergedConfig.textAlign === "left"
+      ? mergedConfig.classes.textLeft
+      : mergedConfig.textAlign === "right"
+      ? mergedConfig.classes.textRight
+      : null;
+
   const classes = mapToCssModules(
-    classNames(
-      mergedConfig.classes.container,
-      typeClass,
-      {
-        "text-center": mergedConfig.textAlign === "center",
-        "text-left": mergedConfig.textAlign === "left",
-        "text-right": mergedConfig.textAlign === "right",
-      },
-      className
-    )
+    cx(userConfig, mergedConfig.classes.container, typeClass, alignClass, className)
   );
 
   return (
-    <div className={classes} role="alert">
+    <div
+      className={classes}
+      role="alert"
+      {...dataAttrs(userConfig, { state: ALERT_STATE[type] })}
+    >
       {children}
     </div>
   );

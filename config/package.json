@@ -1,0 +1,8 @@
+{
+  "name": "smartr-ui/config",
+  "private": true,
+  "main": "../dist/config.js",
+  "module": "../dist/config.esm.js",
+  "types": "../dist/config.d.ts",
+  "sideEffects": false
+}

@@ -1,9 +1,10 @@
 import React from "react";
 import { mapToCssModules } from "../Utils/utils";
-import { classNames } from "../Utils/utils";
+import { cx, renderIcon } from "../Utils/styling";
 import { TooltipPosition } from "../types";
 import { Tooltip } from "../Tooltip/Tooltip";
 import { useSmartConfig } from "../hook/useSmartConfig";
+import type { IconValue } from "../config/defaultConfig";
 
 export interface editorButtonPropTypes {
   tag?: string;
@@ -11,7 +12,8 @@ export interface editorButtonPropTypes {
   text?: string;
   tooltip?: string;
   toolTipPosition?: TooltipPosition;
-  icon?: string;
+  /** Icon class (`"fas fa-search"`), React node or React component. */
+  icon?: IconValue;
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
@@ -28,22 +30,21 @@ export function EditorButton(props: editorButtonPropTypes) {
     ...attributes
   } = props;
   const classes = mapToCssModules(
-    classNames(config.components.editor.classes.inputGroupButton, className)
+    cx(config, config.components.editor.classes.inputGroupButton, className)
   );
 
   const innerContent = (
     <>
-      {icon && <i className={icon}></i>}
+      {icon && renderIcon(icon)}
       {text}
     </>
   );
-  let content = React.createElement(
+  let content: React.ReactElement = React.createElement(
     tag,
     {
       ...attributes,
       className: classes,
       onClick: onClick,
-      ref: {},
     },
     innerContent
   );

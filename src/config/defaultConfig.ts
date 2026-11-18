@@ -1,52 +1,284 @@
-// defaultConfig.ts - Clean version for NPM package
-export const defaultConfig = {
+// defaultConfig.ts - Default (Bootstrap 5) configuration.
+//
+// The values below are exactly the values shipped with smartr-ui 1.1.0, plus the
+// new keys listed in the CHANGELOG (whose defaults reproduce the 1.1.0 output).
+// This object is also exported as `bootstrapPreset`.
+import type { ComponentType, CSSProperties, InputHTMLAttributes, ReactNode, Ref } from "react";
+import type { Input, ScreenSize } from "../types";
+import {
+  sharedAlertTextAlign,
+  sharedBehavior,
+  sharedEditorPlaceHolders,
+  sharedFileTexts,
+  sharedIcons,
+  sharedIconsPosition,
+  sharedMasks,
+  sharedSelectTexts,
+  sharedTableBehavior,
+  sharedTableIcons,
+  sharedTableTexts,
+  sharedTags,
+  sharedTooltipWidth,
+  sharedTrailingIcons,
+  sharedValidationMessages,
+} from "./sharedConfig";
+
+// ============================================================================
+// PUBLIC CONFIG TYPES
+// ============================================================================
+
+/**
+ * An icon can be:
+ * - a `string`: rendered as `<i className={icon}></i>` (Font Awesome style, 1.1.0 behavior)
+ * - a React node (e.g. `<Mail size={16} />`): rendered as-is
+ * - a React component (e.g. `Mail` from lucide-react): rendered as `<Mail aria-hidden />`
+ * - `false`: nothing is rendered
+ * - `null` / `undefined`: an empty `<i></i>` (as in 1.1.0)
+ */
+export type IconValue = string | ReactNode | ComponentType<any>;
+
+/** Builds the class of a grid column. `screen` is undefined for the unprefixed size. */
+export type GridColumnClassFn = (
+  size: number,
+  screen?: ScreenSize
+) => string | null | undefined;
+
+export interface SmartRGridConfig {
+  /** Classes of `<Row>` (Bootstrap: `"row"`). */
+  row: string;
+  /** Column class builder (Bootstrap: `col-{n}` / `col-{screen}-{n}` / `auto`). */
+  column: GridColumnClassFn;
+  /**
+   * Class applied to a column that has no unprefixed size (`size`/`xs`).
+   * Empty in Bootstrap (a `.row > *` is already full width); `col-span-12` in Tailwind.
+   */
+  columnDefault?: string;
+}
+
+/** Pluggable class merger, e.g. `twMerge` from `tailwind-merge`. */
+export type MergeClassesFn = (...classes: string[]) => string;
+
+/**
+ * Translation hook used for every built-in text and validation message.
+ * - `key`: the text's configuration path, e.g. `"resources.validationMessages.required"`
+ *   or `"components.table.texts.showing"`. When the result is missing (nothing,
+ *   the key itself or the fallback) it is called again with the short alias
+ *   (`"validation.required"`, `"table.texts.showing"`). Full list: `smartrTranslationKeys`.
+ * - `fallback`: the configured text (may contain `%s1`, `%s2`… placeholders)
+ * - `params`: placeholder values, when the text has any
+ * The returned string may keep the `%sN` placeholders; they are replaced afterwards.
+ */
+export type TranslateFn = (
+  key: string,
+  fallback: string,
+  params?: any[]
+) => string;
+
+/**
+ * Props passed to a custom control rendered through a render slot
+ * (`<Editor render={{ input: MyInput }} />` or `config.render.input`).
+ *
+ * The component MUST forward `ref` to the native element (or to an object
+ * exposing `value` / `checked` / `files`), because the Editor reads the
+ * current value from it on validation.
+ *
+ * Checkbox slot: non-native checkboxes (e.g. Radix/shadcn `Checkbox`, whose
+ * `onCheckedChange` passes a boolean) are supported. `onChange` may be called
+ * with a boolean (`onCheckedChange={props.onChange}`), with
+ * `{ target: { checked } }` (no `type` needed) or with a native change event.
+ * On validation the value is read from `ref.current.checked` (any object that
+ * exposes `checked`), then from its `aria-checked` attribute, then from the
+ * last value reported through `onChange`.
+ */
+/**
+ * One option of the `select` render slot (`SmartRControlProps.options`).
+ * Built by the Editor from `options` + `optionsId` / `optionsDescription` /
+ * `optionsGroup` / `optionsToolTip` / `optionGetDescription`, in display order.
+ */
+export interface SmartRSelectOption {
+  /**
+   * The option value as configured (not stringified). For the "none selected"
+   * option it is `optionsNoneSelectedValue` (`""` by default) — note that
+   * Radix/shadcn `<SelectItem>` forbids `""`: map it to a sentinel.
+   */
+  value: any;
+  /** Display text (`optionGetDescription(option)` or `option[optionsDescription]`). */
+  label: any;
+  /** `option.disabled`, when the source object has it. */
+  disabled?: boolean;
+  /** `option[optionsGroup]`, when present. */
+  group?: string;
+  /** `option[optionsToolTip]`, when present. */
+  tooltip?: string;
+  /** True for the "none selected" option added when `optionsFirstSelected` is false. */
+  none?: boolean;
+  /** The source item from `options`. */
+  source?: any;
+}
+
+/**
+ * HTML attributes the Editor may pass to a custom control besides the
+ * documented ones (`min`, `max`, `maxLength`, `tabIndex`, `autoFocus`,
+ * `autoComplete`, `accept`, `step`, `aria-*`, event handlers…).
+ */
+type SmartRControlHTMLAttributes = Omit<
+  InputHTMLAttributes<HTMLElement>,
+  | "type"
+  | "id"
+  | "name"
+  | "value"
+  | "checked"
+  | "onChange"
+  | "onBlur"
+  | "onKeyDown"
+  | "onPaste"
+  | "disabled"
+  | "readOnly"
+  | "required"
+  | "placeholder"
+  | "aria-invalid"
+  | "aria-describedby"
+  | "className"
+  | "style"
+  | "children"
+  | "multiple"
+>;
+
+/**
+ * Props of a custom control rendered through a render slot. No string index
+ * signature (only `data-*`), so `React.forwardRef<HTMLInputElement,
+ * SmartRControlProps>` keeps every prop typed.
+ */
+export interface SmartRControlProps extends SmartRControlHTMLAttributes {
+  /** Native `type` attribute (`text`, `email`, `checkbox`…). Undefined for select/textarea. */
+  type?: string;
+  id?: string;
+  name?: string;
+  value?: any;
+  checked?: boolean;
+  /**
+   * Call with a change event (or an object shaped like
+   * `{ target: { name, value, checked, files } }`). For the checkbox slot it
+   * may also be called with a boolean (`checked`), e.g. from `onCheckedChange`.
+   */
+  onChange?: (eventOrChecked: any) => void;
+  /** Call with a blur event (or an object shaped like `{ target: { name, value } }`). */
+  onBlur?: (event: any) => void;
+  onKeyDown?: (event: any) => void;
+  onPaste?: (event: any) => void;
+  disabled?: boolean;
+  readOnly?: boolean;
+  required?: boolean;
+  placeholder?: string;
+  "aria-invalid"?: boolean | "true" | "false";
+  /** Already merged classes (config + per-instance overrides). */
+  className?: string;
+  style?: CSSProperties;
+  /** `Input.LongText`: number of rows. */
+  rows?: number | string;
+  /** `<option>`/`<optgroup>` elements for a native select. */
+  children?: ReactNode;
+  /**
+   * Select slot only: the options as data, in display order (including the
+   * "none selected" option, flagged `none: true`, when `optionsFirstSelected`
+   * is false). Use it instead of parsing `children`.
+   */
+  options?: SmartRSelectOption[];
+  /** Select slot only: always `false` (multiple selects use the built-in dropdown). */
+  multiple?: boolean;
+  /**
+   * Select slot only: the "none selected" option (`{ value, label }`), or
+   * `null` when `optionsFirstSelected` is set (no empty choice).
+   */
+  noneOption?: { value: any; label: any } | null;
+  /** Ids of the note / validation messages describing the control (ARIA mode). */
+  "aria-describedby"?: string;
+  /** Semantic state, handy for styling custom controls. */
+  invalid?: boolean;
+  /** State / marker attributes (`data-smarteditor`, `data-invalid`, `data-mask`…). */
+  [dataAttribute: `data-${string}`]: string | number | boolean | undefined;
+}
+
+/**
+ * `SmartRControlProps` plus the `ref` prop, for React 19 components that take
+ * `ref` as a regular prop: `function MyInput({ ref, ...props }: SmartRControlPropsWithRef<HTMLInputElement>)`.
+ */
+export type SmartRControlPropsWithRef<T = unknown> = SmartRControlProps & { ref?: Ref<T> };
+
+export type SmartRControlComponent = ComponentType<SmartRControlProps & { ref?: any }>;
+
+/** Context passed to a validator. */
+export interface SmartRValidatorContext {
+  /** The Editor's `Input` type. */
+  type: Input;
+  id?: string;
+  name?: string;
+  /** Plain-text title of the Editor. */
+  title?: string;
+  /** The effective configuration. */
+  config: SmartRConfig;
+}
+
+/**
+ * A pluggable validation rule. Return `true` (or `undefined` / `null`) when
+ * the value is valid, `false` to fail with the default message, or a string
+ * to fail with that message.
+ */
+export type SmartRValidator = (
+  value: any,
+  context: SmartRValidatorContext
+) => boolean | string | null | undefined | void;
+
+/**
+ * Pluggable rules (`config.validators`, overridden per Editor by the
+ * `validators` prop). A rule set to `false` is turned off (no built-in rule
+ * either); `undefined` / `null` keeps the built-in rule.
+ * - `required`: runs for `required` Editors (instead of the "empty value" check)
+ * - `email`: `Input.Email` values (instead of the built-in e-mail regex)
+ * - `phone`: `Input.Phone` / `Mobile` / `Fax` values (unmasked; no built-in rule)
+ * - `url`: `Input.Url` values (no built-in rule)
+ * Non-empty values only, except `required`.
+ */
+export interface SmartRValidators {
+  required?: SmartRValidator | false | null;
+  email?: SmartRValidator | false | null;
+  phone?: SmartRValidator | false | null;
+  url?: SmartRValidator | false | null;
+}
+
+export interface SmartRRenderSlots {
+  input?: SmartRControlComponent;
+  select?: SmartRControlComponent;
+  textarea?: SmartRControlComponent;
+  checkbox?: SmartRControlComponent;
+}
+
+/**
+ * Bootstrap column builder — identical to the 1.1.0 `getColumnSize` output.
+ */
+export const bootstrapColumnClass: GridColumnClassFn = (size, screen) => {
+  let className = null;
+  if (size) {
+    if (screen) {
+      className = `col-${screen}-${size > 0 ? size : "auto"}`;
+    } else {
+      className = `col-${size > 0 ? size : "auto"}`;
+    }
+  }
+  return className;
+};
+
+// ============================================================================
+// DEFAULT VALUES (Bootstrap)
+// ============================================================================
+// Framework-independent values (behavior, texts, messages, Font Awesome icon
+// names…) live in `sharedConfig.ts`; this object adds the Bootstrap classes.
+// The resulting values (and key order) are exactly those of smartr-ui 1.1.0.
+const rawDefaultConfig = {
   // ============================================================================
   // CORE BEHAVIOR CONFIGURATION
   // ============================================================================
-  behavior: {
-    validation: {
-      validateOnBlur: true,
-      validateOnSubmit: true,
-    },
-    input: {
-      hasInputGroup: true,
-      prependIconAfterInput: true,
-      showPasswordIcon: true,
-      thousandsSeparator: ".",
-      decimalSeparator: ",",
-      decimalPlaces: 2,
-    },
-    file: {
-      maxFiles: 10,
-      maxFilesPlaceholder: 5,
-      maxFileSize: 300, // in KB
-      filePlaceholderText: "Select a file...",
-    },
-    select: {
-      optionsId: "id",
-      optionsDescription: "description",
-      optionsToolTip: "tooltip",
-      optionsGroup: "group",
-      optionsNoneSelectedValue: "",
-      optionsFirstSelected: false,
-
-      optionsLimiteDescriptionSelected: 3,
-      optionsMultipleSeparatorValue: ",",
-      optionsMultipleSeparatorDescription: ", ",
-
-      // Async select (loadOptions) defaults
-      pageSize: 20,
-      searchDebounceMs: 300,
-      minSearchLength: 0,
-      loadOnOpen: true,
-      fastSearchMinSearchLength: 1,
-      fastSearchLoadOnOpen: false,
-    },
-    internationalization: {
-      translateToken: "SmartRTranslationKey",
-      translateText: false,
-    },
-  },
+  behavior: sharedBehavior,
 
   // ============================================================================
   // COMPONENT-SPECIFIC CONFIGURATION
@@ -54,18 +286,56 @@ export const defaultConfig = {
   components: {
     // TABLE COMPONENT
     table: {
-      behavior: {
-        timeZone: "UTC",
-        culture: "en-US",
-        sourceValueProperty: "id",
-        sourceDescriptionProperty: "description",
-        sourceBadgeProperty: "badge",
-        pageSize: 10,
-        pageSizes: [10, 25, 50, 100],
-      },
+      behavior: sharedTableBehavior,
 
       classes: {
         badge: "badge bg-link rounded-pill font-size-12",
+        // Structure
+        container: "smart-table-container",
+        responsiveWrapper: "table-responsive react-table",
+        table: "table table-bordered",
+        tableHover: "table-hover",
+        thead: "table-light table-nowrap",
+        headerFilter: "header-filter",
+        headerCheckbox: "header-checkbox text-center",
+        cellCheckbox: "cell-checkbox text-center",
+        emptyMessage: "alert alert-info text-center",
+        emptyMessageCard: "alert alert-info text-center my-3",
+        // Alignment (AlignType)
+        alignStart: "text-start",
+        alignCenter: "text-center",
+        alignEnd: "text-end",
+        // Row footers / details
+        rowFooter: "tr-row-footer",
+        rowFooterCell: "td-row-footer",
+        detailRow: "tr-detail",
+        detailRowFooter: "tr-row-detail-footer",
+        detailRowFooterCell: "td-row-detail-footer",
+        // Grouping
+        groupHeader: "group-header",
+        groupLevelPrefix: "group-level-",
+        groupClickable: "cursor-pointer",
+        groupExpanded: "group-expanded",
+        groupCollapsed: "group-collapsed",
+        groupHeaderContent: "d-flex align-items-center",
+        groupHeaderRow: "group-header-row",
+        groupHeaderCell: "group-header-cell p-0",
+        groupFooter: "group-footer",
+        groupFooterRow: "group-footer-row",
+        groupFooterCell: "group-footer-cell p-0",
+        // Card view
+        cardList: "card-list",
+        card: "card mb-3 p-3 shadow-sm",
+        groupHeaderCard: "group-header-card",
+        groupFooterCard: "group-footer-card",
+        cardField: "row gx-2 border-bottom py-2",
+        cardLabel: "col-4",
+        cardValue: "col-8",
+        cardValueFull: "col-12",
+        cardRowFooter: "card-row-footer pt-2",
+        cardDetails: "mt-3",
+        detailCard: "card mb-2 p-2 bg-light-subtle",
+        cardRowDetailFooter: "card-row-detail-footer pt-2",
         // Table Pagination specific classes
         pagination: {
           container:
@@ -83,50 +353,12 @@ export const defaultConfig = {
       },
 
       icons: {
-        sortAscending: "fas fa-sort-up",
-        sortDescending: "fas fa-sort-down",
-        sortDefault: "fas fa-sort",
-        firstPage: "fas fa-angle-double-left",
-        previousPage: "fas fa-angle-left",
-        nextPage: "fas fa-angle-right",
-        lastPage: "fas fa-angle-double-right",
+        ...sharedTableIcons,
+        groupExpanded: "fas me-2 transition-all fa-chevron-down",
+        groupCollapsed: "fas me-2 transition-all fa-chevron-right",
       },
 
-      texts: {
-        showing: "Showing from",
-        to: "to",
-        of: "of",
-        records: "records",
-        firstPage: "Go to first page",
-        previousPage: "Go to previous page",
-        nextPage: "Go to next page",
-        lastPage: "Go to last page",
-        page: "Page",
-        noRecordMessage: "No records to display.",
-        loadingText: "Loading...",
-        searchPlaceholder: "Search...",
-        paginationText: "Showing {0} to {1} of {2} entries",
-
-        selectAll: "Select All",
-        selectRow: "Select",
-        checkboxHeaderTitle: "Select all rows",
-        checkboxCellTitle: "Select row",
-        sortAscendingTitle: "Sort ascending",
-        sortDescendingTitle: "Sort descending",
-        sortDefaultTitle: "Clear sort",
-        groupCountSingular: "record",
-        groupCountPlural: "records",
-        groupHeaderCountFormat: " ({count} {label})",
-        groupFooterText: "Group total: {count} records",
-        groupToggleExpandTitle: "Expand group",
-        groupToggleCollapseTitle: "Collapse group",
-
-        exportCsvFilename: "export.csv",
-        exportNoRowsWarning: "No rows selected for export.",
-        detailHeaderTitle: "Details",
-        tableRoleDescription: "Data table",
-        cardListRoleDescription: "Card list",
-      },
+      texts: sharedTableTexts,
     },
 
     // LOADING COMPONENT
@@ -146,6 +378,7 @@ export const defaultConfig = {
       classes: {
         container: "select-filter form-control",
         innerContainer: "select-box",
+        open: "open",
         groupHeader: "group-header",
         optionsContainer: "options-container",
         optionSelectedInput: "options-selected-input",
@@ -160,21 +393,7 @@ export const defaultConfig = {
         searchInput: "search-input",
         selectAll: "options-select-label",
       },
-      texts: {
-        filterPlaceholder: "type to search...",
-        multipleSelectAll: "Select all",
-        multipleSelectNone: "Select none",
-        multipleSelected: "Selected",
-        multipleNoneSelected: "None selected",
-        optionsNoneSelectedText: "None selected",
-        optionsNoGroup: "Others",
-        loadingText: "Loading...",
-        loadingMoreText: "Loading more...",
-        noResultsText: "No results found",
-        loadErrorText: "Failed to load options",
-        retryText: "Retry",
-        minSearchText: "Type at least %s1 characters to search",
-      },
+      texts: sharedSelectTexts,
     },
 
     // EDITOR COMPONENT (Main form component)
@@ -203,10 +422,20 @@ export const defaultConfig = {
           "input-group-text inside-input show-password",
         labelNote: "form-text text-muted note",
         invalid: "is-invalid",
+        /** Invalid class of the control group. Falls back to `invalid` when undefined (1.1.0 behavior). */
+        controlGroupInvalid: undefined as string | undefined,
+        /** Class of `Input.Select` controls. Falls back to `input` when undefined (1.1.0 behavior). */
+        select: undefined as string | undefined,
+        /** Class of `Input.LongText` controls. Falls back to `input` when undefined (1.1.0 behavior). */
+        textarea: undefined as string | undefined,
+        /** Class of the `Input.File` text box. Falls back to `input` when undefined (1.1.0 behavior). */
+        file: undefined as string | undefined,
+        /** `layout="switch"`: row holding the text block (label + note) and the control. */
+        switchRow: "d-flex justify-content-between align-items-start gap-3",
+        /** `layout="switch"`: text block (label + note) on the left. */
+        switchText: "flex-grow-1",
       },
-      placeHolders: {
-        phone: "(000) 000-0000",
-      },
+      placeHolders: sharedEditorPlaceHolders,
     },
 
     // RADIO & CHECKBOX COMPONENTS
@@ -226,6 +455,34 @@ export const defaultConfig = {
         group: "form-check",
         input: "form-check-input",
         label: "form-check-label",
+        /** `layout="switch"`: wrapper of the control. */
+        switchGroup: "form-check form-switch",
+        /** `layout="switch"`: class of the checkbox. Falls back to `input` when undefined. */
+        switch: undefined as string | undefined,
+        /**
+         * `layout="switch"`: when set, a `<span aria-hidden>` thumb is rendered
+         * right after the native checkbox (draw it with `peer-checked:`). Empty:
+         * no thumb (Bootstrap's `form-switch` draws its own).
+         */
+        switchThumb: "",
+      },
+    },
+
+    // CHIPS (Input.Chips: multi-select as toggle chips, checkbox semantics)
+    chips: {
+      classes: {
+        /** `role="group"` wrapper of the chips. */
+        group: "d-flex flex-wrap gap-2",
+        /** Wrapper of one chip (its checkbox + label). */
+        item: "",
+        /** The (visually hidden) native checkbox. */
+        input: "btn-check",
+        /** The chip itself (the checkbox label). */
+        chip: "btn btn-sm btn-outline-primary rounded-pill",
+        /** Added to a selected chip. */
+        chipChecked: "",
+        /** Added to a disabled chip. */
+        chipDisabled: "",
       },
     },
 
@@ -235,29 +492,36 @@ export const defaultConfig = {
         messageError: "error-validation-message",
         messageSuccess: "success-validation-message",
         messageWarning: "warning-validation-message",
+        /** Extra class of `<FormMessage>` (form-level messages). */
+        formMessage: "",
       },
     },
 
     // TOOLTIP COMPONENT
     tooltip: {
-      width: 250,
+      width: sharedTooltipWidth,
       classes: {
         top: "smart-tooltip top",
         bottom: "smart-tooltip bottom",
         left: "smart-tooltip left",
         right: "smart-tooltip right",
         overlay: "tooltip-overlay",
+        /** Accessible `?` trigger rendered when the tooltip icon is `false`. */
+        trigger: "",
       },
     },
 
     alert: {
-      textAlig: "center",
+      textAlig: sharedAlertTextAlign,
       classes: {
         container: "alert",
         success: "alert-success",
         warning: "alert-warning",
         danger: "alert-danger",
         info: "alert-info",
+        textCenter: "text-center",
+        textLeft: "text-left",
+        textRight: "text-right",
       },
     },
   },
@@ -268,98 +532,77 @@ export const defaultConfig = {
   resources: {
     // ICONS LIBRARY
     icons: {
-      money: "fas fa-dollar-sign",
-      percent: "fas fa-percent",
-      date: "fas fa-calendar",
-      dateTime: "fas fa-calendar-alt",
-      month: "fas fa-calendar",
-      week: "fas fa-calendar-week",
-      email: "fas fa-envelope",
-      phone: "fas fa-phone",
-      mobile: "fas fa-mobile-alt",
-      fax: "fas fa-fax",
-      password: "fas fa-lock",
-      time: "fas fa-clock",
-      url: "fas fa-link",
-      fastSearch: "fas fa-search",
-      note: "fas fa-info",
+      ...sharedIcons,
       tooltip: "tooltip-icon fas fa-info-circle",
-      delete: "fas fa-trash",
-      download: "fas fa-cloud-download-alt",
-      upload: "fas fa-cloud-upload-alt",
-      showPassword: "fas fa-eye",
-      hidePassword: "fas fa-eye-slash",
+      ...sharedTrailingIcons,
     },
 
     // ICONS POSITION CONFIGURATION
-    iconsPosition: {
-      money: "start",
-      percent: "start",
-      date: "start",
-      dateTime: "start",
-      month: "start",
-      week: "start",
-      email: "start",
-      phone: "start",
-      mobile: "start",
-      fax: "start",
-      password: "start",
-      time: "start",
-      url: "start",
-      fastSearch: "start",
-      note: "start",
-    },
+    iconsPosition: sharedIconsPosition,
 
     // VALIDATION MESSAGES
-    validationMessages: {
-      minCharacter: "Please enter at least 1 character",
-      minCharacters: "Please enter at least %s1 characters",
-      maxCharacter: "Please enter at most 1 character",
-      maxCharacters: "Please enter at most %s1 characters",
-      minMaxCharacters:
-        "This value must be between %s1 and %s2 characters long",
-      minNumber: "The value must be greater than or equal to %s1",
-      maxNumber: "The value must be less than or equal to %s1",
-      minMaxNumber: "This number must be between %s1 and %s2",
-      email: "Please enter a valid email address",
-      required: "This field is required",
-      date: "Please enter a valid date",
-      number: "Please enter a valid number",
-      totalFilesAllowedExceeded: "Select at most %s1 files",
-      fileSizeExceededMaxAllowed:
-        "File %s1 exceeds the maximum allowed size of %s2",
-    },
+    validationMessages: sharedValidationMessages,
 
     // FILE MANAGEMENT TEXTS
-    fileTexts: {
-      downloadTooltip: "Click here to download the file",
-      deleteTooltip: "Click here to delete the file",
-      uploadTooltip: "Click here to choose a file",
-      totalSelectedFiles: "Selected files",
-    },
+    fileTexts: sharedFileTexts,
 
     // MASKS AND FORMATS
-    masks: {
-      phone: "(000) 000-0000",
-      phonePlaceholder: "(000) 000-0000",
-    },
+    masks: sharedMasks,
   },
 
   // ============================================================================
   // HTML TAGS CONFIGURATION (Legacy - consider moving to components)
   // ============================================================================
-  tags: {
-    columnTag: "div",
-    invalidFeedbackTag: "div",
-    editorButtonTag: "span",
+  tags: sharedTags,
+};
+
+type RawConfig = typeof rawDefaultConfig;
+type RawComponents = RawConfig["components"];
+type IconMap<T> = { [K in keyof T]: IconValue };
+
+/** Full smartr-ui configuration. */
+export type SmartRConfig = Omit<RawConfig, "components" | "resources"> & {
+  components: Omit<RawComponents, "table"> & {
+    table: Omit<RawComponents["table"], "icons"> & {
+      icons: IconMap<RawComponents["table"]["icons"]>;
+    };
+  };
+  resources: Omit<RawConfig["resources"], "icons"> & {
+    icons: IconMap<RawConfig["resources"]["icons"]>;
+  };
+  /** Grid (Row/Column) class strategy. */
+  grid: SmartRGridConfig;
+  /** Optional class merger (e.g. `twMerge`). Default: plain concatenation (1.1.0 behavior). */
+  mergeClasses?: MergeClassesFn;
+  /** Optional translation function for built-in texts and validation messages. */
+  translate?: TranslateFn;
+  /** Global default render slots for the Editor control. */
+  render?: SmartRRenderSlots;
+  /** Pluggable validation rules (`email`, `phone`, `url`, `required`). */
+  validators?: SmartRValidators;
+};
+
+export const defaultConfig: SmartRConfig = {
+  ...rawDefaultConfig,
+  grid: {
+    row: "row",
+    column: bootstrapColumnClass,
+    columnDefault: "",
   },
 };
 
-export type SmartRConfig = typeof defaultConfig;
+// Functions and components are configuration leaves (never deep-partialized).
+type ConfigLeaf =
+  | ((...args: any[]) => any)
+  | (abstract new (...args: any[]) => any);
 
-// Deep partial type for nested configuration objects
+// Deep partial type for nested configuration objects.
 export type DeepPartial<T> = {
-  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+  [P in keyof T]?: T[P] extends ConfigLeaf
+    ? T[P]
+    : T[P] extends object
+    ? DeepPartial<T[P]>
+    : T[P];
 };
 
 export type PartialSmartRConfig = DeepPartial<SmartRConfig>;

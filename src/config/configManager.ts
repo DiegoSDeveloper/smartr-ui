@@ -1,19 +1,32 @@
-// configManager.ts - Optimized for NPM package
+// configManager.ts - Global configuration singleton
 import {
   defaultConfig,
   SmartRConfig,
   PartialSmartRConfig,
 } from "./defaultConfig";
+import { createConfig, deepMerge } from "./merge";
 
 export class ConfigManager {
   private config: SmartRConfig = { ...defaultConfig };
   private hasUserConfig = false;
 
   /**
-   * Set user configuration - merges with defaults
+   * Set user configuration - merges with the current configuration
    */
   setConfig(userConfig: PartialSmartRConfig): void {
     this.config = this.deepMerge(this.config, userConfig as any);
+    this.hasUserConfig = true;
+  }
+
+  /**
+   * Replace the base configuration with a preset (e.g. `tailwindPreset`),
+   * optionally merging overrides on top of it.
+   *
+   * @example
+   * configManager.setPreset(tailwindPreset, { mergeClasses: twMerge });
+   */
+  setPreset(preset: SmartRConfig, overrides?: PartialSmartRConfig): void {
+    this.config = createConfig(preset, overrides);
     this.hasUserConfig = true;
   }
 
@@ -53,30 +66,7 @@ export class ConfigManager {
    * Deep merge objects and arrays - updated to handle DeepPartial
    */
   private deepMerge<T>(base: T, patch: any): T {
-    if (!patch || typeof patch !== "object") return base;
-
-    const result: any = Array.isArray(base)
-      ? [...((patch as any) ?? base)]
-      : { ...base };
-
-    for (const [key, value] of Object.entries(patch)) {
-      const baseValue = (base as any)[key];
-
-      if (
-        value &&
-        typeof value === "object" &&
-        !Array.isArray(value) &&
-        baseValue &&
-        typeof baseValue === "object" &&
-        !Array.isArray(baseValue)
-      ) {
-        result[key] = this.deepMerge(baseValue, value);
-      } else if (value !== undefined) {
-        result[key] = value;
-      }
-    }
-
-    return result;
+    return deepMerge(base, patch);
   }
 }
 

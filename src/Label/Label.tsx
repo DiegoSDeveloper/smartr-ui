@@ -1,8 +1,14 @@
 import React from "react";
-import { classNames } from "../Utils/utils";
-import { getColumnSize, mapToCssModules } from "../Utils/utils";
+import { mapToCssModules } from "../Utils/utils";
+import {
+  cx,
+  dataAttrs,
+  getGridColumnClasses,
+  renderIcon,
+  shouldRenderIconSlot,
+} from "../Utils/styling";
 
-import { ColumnSize, LabelMode, ScreenSize, TooltipPosition } from "../types";
+import { ColumnSize, LabelMode, TooltipPosition } from "../types";
 import { Tooltip } from "../Tooltip/Tooltip";
 import { useSmartConfig } from "../hook/useSmartConfig";
 /**
@@ -12,7 +18,8 @@ interface labelPropTypes {
   id?: string;
   htmlFor?: string;
   className?: string;
-  title?: string;
+  /** Strings render exactly as before; React nodes are rendered as-is. */
+  title?: React.ReactNode;
   required?: boolean;
   titleBold?: boolean;
   tooltip?: string;
@@ -26,11 +33,17 @@ interface labelPropTypes {
   xl?: ColumnSize;
   xxl?: ColumnSize;
   size?: ColumnSize;
+  /**
+   * Per-instance classes merged after the configured label classes.
+   * (`className` is kept for backwards compatibility and, as in 1.1.0, is not applied.)
+   */
+  labelClassName?: string;
+  /** Per-instance classes for the tooltip bubble. */
+  tooltipClassName?: string;
 }
 
 export function Label(props: labelPropTypes) {
   const {
-    className,
     id,
     htmlFor,
     required = false,
@@ -47,34 +60,20 @@ export function Label(props: labelPropTypes) {
     xl,
     xxl,
     size,
+    labelClassName,
+    tooltipClassName,
   } = props;
   const config = useSmartConfig();
-  let colClasses = "";
-  if (size) {
-    colClasses += getColumnSize(size);
-  }
-  if (xs) {
-    colClasses += ` ${getColumnSize(xs, ScreenSize.XS)}`;
-  }
-  if (sm) {
-    colClasses += ` ${getColumnSize(sm, ScreenSize.SM)}`;
-  }
-  if (md) {
-    colClasses += ` ${getColumnSize(md, ScreenSize.MD)}`;
-  }
-  if (lg) {
-    colClasses += ` ${getColumnSize(lg, ScreenSize.LG)}`;
-  }
-  if (xl) {
-    colClasses += ` ${getColumnSize(xl, ScreenSize.XL)}`;
-  }
-  if (xxl) {
-    colClasses += ` ${getColumnSize(xxl, ScreenSize.XXL)}`;
-  }
+  // The grid default (e.g. Tailwind `col-span-12`) only matters when the label
+  // is itself a grid item, i.e. in horizontal layout.
+  const colClasses = getGridColumnClasses(
+    horizontal ? config : { ...config, grid: { ...config.grid, columnDefault: "" } },
+    { size, xs, sm, md, lg, xl, xxl }
+  );
 
   const labelAttributes: Record<string, string> = {};
   if (id) {
-    let labelId = "lbl" + id;
+    const labelId = "lbl" + id;
     labelAttributes["id"] = labelId;
   }
 
@@ -100,7 +99,7 @@ export function Label(props: labelPropTypes) {
         break;
     }
   } else {
-    // Mantém a horizontalLabel para layout horizontal
+    // Keeps horizontalLabel for horizontal layout
     labelClasses = config.components.editor.classes.horizontalLabel;
   }
 
@@ -111,28 +110,74 @@ export function Label(props: labelPropTypes) {
     labelClasses += ` ${config.components.editor.classes.titleBold}`;
   }
 
-  labelClasses = mapToCssModules(classNames(colClasses, labelClasses));
+  labelClasses = mapToCssModules(
+    cx(config, colClasses, labelClasses, labelClassName)
+  );
 
   let labelChildren = null;
   if (!tooltip) {
-    labelChildren = String(title);
+    // strings (and undefined, numbers…) exactly as 1.1.0; React nodes as-is
+    labelChildren =
+      React.isValidElement(title) || Array.isArray(title) ? title : String(title);
   } else {
-    labelChildren = (
-      <>
-        {title}{" "}
-        <Tooltip position={toolTipPosition} text={tooltip}>
-          <i className={config.resources.icons.tooltip}></i>
-        </Tooltip>
-      </>
-    );
+    const tooltipIcon = config.resources.icons.tooltip;
+    if (shouldRenderIconSlot(config, tooltipIcon)) {
+      labelChildren = (
+        <>
+          {title}{" "}
+          <Tooltip
+            position={toolTipPosition}
+            text={tooltip}
+            className={tooltipClassName}
+          >
+            {renderTooltipIcon(tooltipIcon)}
+          </Tooltip>
+        </>
+      );
+    } else {
+      // No tooltip icon (e.g. unstyled preset, or `icons.tooltip: false`):
+      // keep the tooltip reachable through a minimal, focusable text trigger.
+      labelChildren = (
+        <>
+          {title}{" "}
+          <Tooltip
+            position={toolTipPosition}
+            text={tooltip}
+            className={tooltipClassName}
+            accessible
+          >
+            <button
+              type="button"
+              aria-label={tooltip}
+              className={config.components.tooltip.classes.trigger || undefined}
+              data-smartr-tooltip-trigger=""
+            >
+              ?
+            </button>
+          </Tooltip>
+        </>
+      );
+    }
   }
 
   return React.createElement(
     "label",
     {
       ...labelAttributes,
+      ...dataAttrs(config, { required }),
       className: labelClasses,
     },
     labelChildren
   );
+}
+
+/**
+ * The tooltip trigger must be a single element able to receive mouse events
+ * and a ref; React-node/component icons are wrapped in a `<span>`.
+ */
+function renderTooltipIcon(icon: any) {
+  if (icon === undefined || icon === null || typeof icon === "string") {
+    return renderIcon(icon);
+  }
+  return <span>{renderIcon(icon)}</span>;
 }

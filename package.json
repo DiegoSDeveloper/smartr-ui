@@ -1,25 +1,80 @@
 {
   "name": "smartr-ui",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A comprehensive React components library with form controls, UI elements, and layout components",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
+  "sideEffects": [
+    "*.css",
+    "*.scss"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "module": "./dist/index.esm.js",
+      "default": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "module": "./dist/core.esm.js",
+      "default": "./dist/core.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "module": "./dist/config.esm.js",
+      "default": "./dist/config.js"
+    },
+    "./presets/tailwind": {
+      "import": {
+        "types": "./dist/presets/tailwind.d.mts",
+        "default": "./dist/presets/tailwind.mjs"
+      },
+      "module": "./dist/presets/tailwind.esm.js",
+      "require": {
+        "types": "./dist/presets/tailwind.d.ts",
+        "default": "./dist/presets/tailwind.js"
+      },
+      "default": "./dist/presets/tailwind.js"
+    },
+    "./presets/shadcn": {
+      "import": {
+        "types": "./dist/presets/shadcn.d.mts",
+        "default": "./dist/presets/shadcn.mjs"
+      },
+      "module": "./dist/presets/shadcn.esm.js",
+      "require": {
+        "types": "./dist/presets/shadcn.d.ts",
+        "default": "./dist/presets/shadcn.js"
+      },
+      "default": "./dist/presets/shadcn.js"
+    },
+    "./package.json": "./package.json",
+    "./dist/*.js": "./dist/*.js",
+    "./dist/*.mjs": "./dist/*.mjs",
+    "./dist/*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
   "files": [
     "dist",
+    "core",
+    "config",
+    "presets",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "rollup -c rollup.config.js",
-    "dev": "rollup -c -w",
+    "build": "rollup -c rollup.config.mjs",
+    "dev": "rollup -c rollup.config.mjs -w",
     "prepublishOnly": "npm run build",
-    "type-check": "tsc --noEmit",
-    "lint": "eslint src --ext .ts,.tsx",
-    "test": "jest",
+    "type-check": "tsc --noEmit && tsc --noEmit -p test/types/tsconfig.json",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "publish:script": "node publish.js",
-    "prepublish": "npm run build",
-    "prepare": "npm run build",
     "pack": "npm run build && npm pack",
     "release": "npm run build && npm publish --access public",
     "release:patch": "npm run build && npm version patch && npm publish --access public",
@@ -56,21 +111,33 @@
     "@babel/core": "^7.20.0",
     "@babel/preset-react": "^7.18.0",
     "@babel/preset-typescript": "^7.18.0",
+    "@eslint/js": "^9.39.4",
     "@rollup/plugin-babel": "^6.0.0",
     "@rollup/plugin-commonjs": "^24.0.0",
     "@rollup/plugin-node-resolve": "^15.0.0",
     "@rollup/plugin-typescript": "^11.0.0",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.0",
     "@types/node": "^24.9.1",
-    "@types/react": "^18.0.0",
-    "@types/react-dom": "^18.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@typescript-eslint/eslint-plugin": "^8.72.2",
+    "@typescript-eslint/parser": "^8.72.2",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.15.0",
+    "jsdom": "^25.0.1",
     "postcss-modules": "^6.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "rollup": "^3.0.0",
     "rollup-plugin-dts": "^5.0.0",
     "rollup-plugin-peer-deps-external": "^2.2.4",
     "rollup-plugin-postcss": "^4.0.0",
     "sass": "^1.93.2",
     "tslib": "^2.8.1",
-    "typescript": "^4.9.0"
+    "typescript": "~5.6.3",
+    "vitest": "^2.1.9"
   },
   "engines": {
     "node": ">=14.0.0"

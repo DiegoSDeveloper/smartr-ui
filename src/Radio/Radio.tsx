@@ -3,6 +3,7 @@ import React from "react";
 import { Label } from "../Label/Label";
 import { LabelMode } from "../types";
 import { useSmartConfig } from "../hook/useSmartConfig";
+import { withSlot } from "../Utils/styling";
 
 interface RadioPropTypes {
   id?: string;
@@ -23,6 +24,8 @@ interface RadioPropTypes {
     HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
   >;
   className?: string;
+  /** Per-instance class overrides (merged after the configured radio classes). */
+  slotClassNames?: { list?: string; group?: string; label?: string };
 }
 
 export function Radio(props: RadioPropTypes) {
@@ -43,6 +46,7 @@ export function Radio(props: RadioPropTypes) {
     onChangeEvent,
     inputRef,
     className,
+    slotClassNames = {},
 
     ...attributes
   } = props;
@@ -54,7 +58,7 @@ export function Radio(props: RadioPropTypes) {
       ? [...options]
       : [];
   if (!optionsFirstSelected) {
-    let noneSelectOption = {};
+    const noneSelectOption = {};
     noneSelectOption[optionsId] = optionsNoneSelectedValue;
     noneSelectOption[optionsDescription] = optionsNoneSelectedText;
     dataSource.unshift(noneSelectOption);
@@ -82,17 +86,10 @@ export function Radio(props: RadioPropTypes) {
         tooltip={option[optionsTooltip]}
         mode={LabelMode.CheckBox}
         className={config.components.radio.classes.label}
+        labelClassName={slotClassNames.label}
       ></Label>
     );
 
-    const radioLabel2 = React.createElement(
-      "label",
-      {
-        ...radioLabelAttributes,
-        className: config.components.radio.classes.label,
-      },
-      option[optionsDescription]
-    );
     const radioRef = React.createRef();
     inputRadioRefs.current[index] = radioRef;
 
@@ -109,9 +106,13 @@ export function Radio(props: RadioPropTypes) {
       "div",
       {
         key: index,
-        className: !inline
-          ? config.components.radio.classes.group
-          : config.components.radio.classes.groupInLine,
+        className: withSlot(
+          config,
+          !inline
+            ? config.components.radio.classes.group
+            : config.components.radio.classes.groupInLine,
+          slotClassNames.group
+        ),
       },
       radioInput,
       radioLabel
@@ -123,7 +124,11 @@ export function Radio(props: RadioPropTypes) {
   const optionsGroup = React.createElement(
     "div",
     {
-      className: config.components.radio.classes.groupList,
+      className: withSlot(
+        config,
+        config.components.radio.classes.groupList,
+        slotClassNames.list
+      ),
       ref: inputRef,
     },
     innerChildren

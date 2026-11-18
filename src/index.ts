@@ -26,3 +26,23 @@ export * from './config/configManager';
 export * from './config/defaultConfig';
 export * from './hook/useSmartConfig';
 export * from './types';
+
+// Framework-agnostic styling (see CHANGELOG)
+export { createConfig } from './config/merge';
+export { SmartRProvider, SmartRConfigContext } from './context/SmartRProvider';
+export type { SmartRProviderProps } from './context/SmartRProvider';
+export * from './presets/index';
+export { renderIcon } from './Utils/styling';
+export { translationKeyPath } from './Utils/translate';
+export {
+  smartrTranslationKeys,
+  defaultTexts,
+  defaultTextsTree,
+  translationKeyAliases,
+  getTranslationKeys,
+} from './config/translationKeys';
+export type { SmartRTranslationKey } from './config/translationKeys';
+export * from './Chips/Chips';
+export * from './FormMessage/FormMessage';
+export { phoneMasks } from './config/sharedConfig';
+export type { SmartRValidateMode } from './config/sharedConfig';

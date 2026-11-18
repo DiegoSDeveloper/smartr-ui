@@ -1,5 +1,6 @@
 import React from "react";
 import { Input } from "../types";
+import type { SmartRControlComponent } from "../config/defaultConfig";
 
 interface EditorInputPropTypes {
   type: Input;
@@ -16,6 +17,15 @@ interface EditorInputPropTypes {
   className?: string;
   style?: React.CSSProperties;
   children?: React.ReactNode;
+  /**
+   * Optional custom control (render slot). When set, it is rendered instead of
+   * the native element and receives the same props plus semantic state.
+   */
+  control?: SmartRControlComponent;
+  /** Semantic state passed to custom controls only. */
+  controlState?: { required?: boolean; invalid?: boolean };
+  /** Extra props passed to custom controls only (select slot: `options`, `multiple`, `noneOption`). */
+  controlData?: Record<string, any>;
 }
 
 export function EditorInput(props: EditorInputPropTypes) {
@@ -32,6 +42,9 @@ export function EditorInput(props: EditorInputPropTypes) {
     checked,
     style,
     children,
+    control,
+    controlState,
+    controlData,
     ...attributes
   } = props;
 
@@ -53,5 +66,40 @@ export function EditorInput(props: EditorInputPropTypes) {
     delete inputProps.value;
   }
 
+  if (control && type !== Input.Hidden) {
+    return React.createElement(
+      control as any,
+      { ...toControlProps(inputProps, controlState), ...(controlData || {}) },
+      children
+    );
+  }
+
   return React.createElement(inputType, inputProps, children);
+}
+
+/**
+ * Normalizes native attributes into the documented `SmartRControlProps`
+ * contract (booleans instead of HTML attribute strings, no null handlers).
+ */
+function toControlProps(
+  inputProps: Record<string, any>,
+  controlState: { required?: boolean; invalid?: boolean } = {}
+): Record<string, any> {
+  const props: Record<string, any> = {};
+  for (const [key, value] of Object.entries(inputProps)) {
+    if (value === null || value === undefined) continue;
+    props[key] = value;
+  }
+  if ("disabled" in props) props.disabled = !!props.disabled;
+  if ("readOnly" in props) props.readOnly = props.readOnly !== false;
+  // numeric HTML attributes as numbers (typed `number` in SmartRControlProps)
+  for (const key of ["tabIndex", "minLength", "maxLength"]) {
+    if (key in props && props[key] !== "" && !isNaN(Number(props[key]))) {
+      props[key] = Number(props[key]);
+    }
+  }
+  props.required = !!controlState.required;
+  props.invalid = !!controlState.invalid;
+  if (controlState.invalid) props["aria-invalid"] = true;
+  return props;
 }

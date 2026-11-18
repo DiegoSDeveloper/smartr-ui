@@ -1,0 +1,8 @@
+{
+  "name": "smartr-ui/presets/tailwind",
+  "private": true,
+  "main": "../../dist/presets/tailwind.js",
+  "module": "../../dist/presets/tailwind.esm.js",
+  "types": "../../dist/presets/tailwind.d.ts",
+  "sideEffects": false
+}

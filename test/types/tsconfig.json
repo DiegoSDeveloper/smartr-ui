@@ -1,0 +1,9 @@
+{
+  // Type-level tests (`npm run type-check`, and test/round3.test.tsx runs it too).
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "noUnusedLocals": false
+  },
+  "include": ["./*.tsx", "../../src/global.d.ts"]
+}

@@ -1,6 +1,12 @@
 // TablePagination.tsx - PRODUCTION READY VERSION
 import React from "react";
 import { useSmartConfig } from "../hook/useSmartConfig";
+import {
+  dataAttrs,
+  legacyClass,
+  renderIcon,
+  translateText,
+} from "../Utils/styling";
 import { Tooltip } from "../Tooltip/Tooltip";
 import { TooltipPosition } from "../types";
 import { TablePaginationComponentProps } from "./types";
@@ -18,17 +24,20 @@ export function TablePagination({
 }: TablePaginationComponentProps) {
   const config = useSmartConfig();
 
-  // Get texts from config
+  // Get texts from config (through `config.translate` when provided)
+  const tableTexts = config.components.table.texts;
+  const text = (key: keyof typeof tableTexts) =>
+    translateText(config, `table.texts.${String(key)}`, tableTexts[key]);
   const texts = {
-    showing: config.components.table.texts.showing,
-    to: config.components.table.texts.to,
-    of: config.components.table.texts.of,
-    records: config.components.table.texts.records,
-    firstPage: config.components.table.texts.firstPage,
-    previousPage: config.components.table.texts.previousPage,
-    nextPage: config.components.table.texts.nextPage,
-    lastPage: config.components.table.texts.lastPage,
-    page: config.components.table.texts.page,
+    showing: text("showing"),
+    to: text("to"),
+    of: text("of"),
+    records: text("records"),
+    firstPage: text("firstPage"),
+    previousPage: text("previousPage"),
+    nextPage: text("nextPage"),
+    lastPage: text("lastPage"),
+    page: text("page"),
     ...customTexts,
   };
 
@@ -69,10 +78,14 @@ export function TablePagination({
   const isLastPage = safeCurrentPage >= safeTotalPages;
 
   function getPageItemClass(isDisabled: boolean) {
-    return `${classes.pageItem} ${
-      isDisabled ? classes.disabledPage : ""
-    }`.trim();
+    return legacyClass(
+      config,
+      `${classes.pageItem} ${isDisabled ? classes.disabledPage : ""}`.trim(),
+      [classes.pageItem, isDisabled ? classes.disabledPage : ""]
+    );
   }
+  const itemData = (isDisabled: boolean) =>
+    dataAttrs(config, { disabled: isDisabled });
 
   function handlePageClick(
     page: number,
@@ -99,7 +112,7 @@ export function TablePagination({
       <div className={classes.controls}>
         <ul className={`${classes.pagination}`}>
           {/* First page button */}
-          <li className={getPageItemClass(isFirstPage)}>
+          <li className={getPageItemClass(isFirstPage)} {...itemData(isFirstPage)}>
             <Tooltip position={TooltipPosition.Top} text={texts.firstPage}>
               <a
                 href="#"
@@ -107,13 +120,13 @@ export function TablePagination({
                 onClick={(e) => handlePageClick(1, isFirstPage, e)}
                 aria-label={texts.firstPage}
               >
-                <i className={icons.firstPage}></i>
+                {renderIcon(icons.firstPage)}
               </a>
             </Tooltip>
           </li>
 
           {/* Previous page button */}
-          <li className={getPageItemClass(isFirstPage)}>
+          <li className={getPageItemClass(isFirstPage)} {...itemData(isFirstPage)}>
             <Tooltip position={TooltipPosition.Top} text={texts.previousPage}>
               <a
                 href="#"
@@ -123,7 +136,7 @@ export function TablePagination({
                 }
                 aria-label={texts.previousPage}
               >
-                <i className={icons.previousPage}></i>
+                {renderIcon(icons.previousPage)}
               </a>
             </Tooltip>
           </li>
@@ -136,7 +149,7 @@ export function TablePagination({
           </li>
 
           {/* Next page button */}
-          <li className={getPageItemClass(isLastPage)}>
+          <li className={getPageItemClass(isLastPage)} {...itemData(isLastPage)}>
             <Tooltip position={TooltipPosition.Top} text={texts.nextPage}>
               <a
                 href="#"
@@ -146,13 +159,13 @@ export function TablePagination({
                 }
                 aria-label={texts.nextPage}
               >
-                <i className={icons.nextPage}></i>
+                {renderIcon(icons.nextPage)}
               </a>
             </Tooltip>
           </li>
 
           {/* Last page button */}
-          <li className={getPageItemClass(isLastPage)}>
+          <li className={getPageItemClass(isLastPage)} {...itemData(isLastPage)}>
             <Tooltip position={TooltipPosition.Top} text={texts.lastPage}>
               <a
                 href="#"
@@ -160,7 +173,7 @@ export function TablePagination({
                 onClick={(e) => handlePageClick(safeTotalPages, isLastPage, e)}
                 aria-label={texts.lastPage}
               >
-                <i className={icons.lastPage}></i>
+                {renderIcon(icons.lastPage)}
               </a>
             </Tooltip>
           </li>

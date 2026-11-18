@@ -13,11 +13,8 @@ import {
   LoadOptionsResult,
   SmartOption,
 } from "../types";
-import {
-  classNames,
-  mapToCssModules,
-  parameterizedString,
-} from "../Utils/utils";
+import { mapToCssModules } from "../Utils/utils";
+import { cx, dataAttrs, legacyClass, translateText } from "../Utils/styling";
 import { useSmartConfig } from "../hook/useSmartConfig";
 import { SelectOption } from "./SelectOption";
 
@@ -80,6 +77,8 @@ export interface AsyncSelectPropTypes {
     HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
   >;
   className?: string;
+  /** Semantic state used for data-attributes. */
+  controlState?: { required?: boolean; invalid?: boolean };
 }
 
 interface CachedPage {
@@ -131,6 +130,7 @@ const AsyncSelect = (props: AsyncSelectPropTypes) => {
     onChangeEvent,
     inputRef,
     className,
+    controlState,
   } = props;
 
   const isDisabled = !enabled || readOnly;
@@ -169,7 +169,16 @@ const AsyncSelect = (props: AsyncSelectPropTypes) => {
     { term: "", page: 1, append: false }
   );
 
-  const texts = config.components.select.texts;
+  const rawTexts = config.components.select.texts;
+  const text = (key: keyof typeof rawTexts, ...params: any[]) =>
+    translateText(config, `select.texts.${String(key)}`, rawTexts[key], ...params);
+  const texts = {
+    loadingText: text("loadingText"),
+    loadingMoreText: text("loadingMoreText"),
+    noResultsText: text("noResultsText"),
+    loadErrorText: text("loadErrorText"),
+    retryText: text("retryText"),
+  };
   const selectClasses = config.components.select.classes;
   const baseId: string =
     editorAttributes?.id || editorAttributes?.name || "smart-async-select";
@@ -448,7 +457,7 @@ const AsyncSelect = (props: AsyncSelectPropTypes) => {
     } else {
       resetList();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [reloadToken]);
 
   // Dispara a validação (validateOnBlur) SEMPRE com o input escondido como target:
@@ -630,7 +639,8 @@ const AsyncSelect = (props: AsyncSelectPropTypes) => {
       renderError(error, retry)
     ) : (
       <div
-        className={classNames(
+        className={cx(
+          config,
           selectClasses.optionsMessage,
           selectClasses.optionsError
         )}
@@ -658,7 +668,7 @@ const AsyncSelect = (props: AsyncSelectPropTypes) => {
   } else if (searchBlocked) {
     dropdownContent = (
       <div className={selectClasses.optionsMessage}>
-        {parameterizedString(texts.minSearchText, minLengthForHint)}
+        {text("minSearchText", minLengthForHint)}
       </div>
     );
   } else if (displayOptions.length === 0) {
@@ -702,17 +712,24 @@ const AsyncSelect = (props: AsyncSelectPropTypes) => {
   }
 
   const classes = mapToCssModules(
-    classNames(className, selectClasses.container, {
+    cx(config, className, selectClasses.container, {
       [config.components.editor.classes.controlGroupDisabledControl]:
         isDisabled,
     })
   );
+  const openClass = isOpen ? selectClasses.open : "";
 
   return (
     <div
       ref={containerRef}
       tabIndex={isDisabled ? -1 : 0}
       className={classes}
+      {...dataAttrs(config, {
+        state: isOpen ? "open" : "closed",
+        disabled: isDisabled,
+        invalid: controlState?.invalid,
+        required: controlState?.required,
+      })}
       role="combobox"
       aria-expanded={isOpen}
       aria-haspopup="listbox"
@@ -736,12 +753,18 @@ const AsyncSelect = (props: AsyncSelectPropTypes) => {
         inputRef={inputRef}
       ></EditorInput>
       <div
-        className={`${selectClasses.innerContainer} ${isOpen ? "open" : ""}`}
+        className={legacyClass(
+          config,
+          `${selectClasses.innerContainer} ${openClass}`,
+          [selectClasses.innerContainer, openClass]
+        )}
       >
         <div
-          className={`${selectClasses.optionSelectedInput} ${
-            isOpen ? "open" : ""
-          }`}
+          className={legacyClass(
+            config,
+            `${selectClasses.optionSelectedInput} ${openClass}`,
+            [selectClasses.optionSelectedInput, openClass]
+          )}
         >
           {editorDescription}
         </div>
